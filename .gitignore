@@ -1,2 +1,4 @@
 dataset
 .ipynb_checkpoints
+.DS_Store
+*.pkl.bz2
