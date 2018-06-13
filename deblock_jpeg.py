@@ -26,29 +26,32 @@ import pickle
 import argparse
 import itertools
 import collections
+import pandas as pd
+from thread_pool import ThreadPool
 
+TEST_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_test.csv' # noqa
+TEST_IMAGES_PATH = './dataset/VGGFACE2/test'
+TRAIN_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_train.csv' # noqa
+TRAIN_IMAGES_PATH = './dataset/VGGFACE2/train'
 
 # Configure all options first so we can later custom-load other libraries (Theano) based on device specified by user.
 parser = argparse.ArgumentParser(description='Generate a new image by applying style onto a content image.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 add_arg = parser.add_argument
-add_arg('files', nargs='*', default=[])
-add_arg('--zoom',               default=1, type=int,                help='Resolution increase factor for inference.')
-add_arg('--rendering-tile',     default=80, type=int,               help='Size of tiles used for rendering images.')
-add_arg('--rendering-overlap',  default=24, type=int,               help='Number of pixels padding around each tile.')
-add_arg('--rendering-histogram',default=False, action='store_true', help='Match color histogram of output to input.')
-add_arg('--type',               default='photo', type=str,          help='Name of the neural network to load/save.')
-add_arg('--model',              default='repair', type=str,         help='Specific trained version of the model.')
-add_arg('--batch-shape',        default=192, type=int,              help='Resolution of images in training batch.')
-add_arg('--batch-size',         default=15, type=int,               help='Number of images per training batch.')
-add_arg('--generator-upscale',  default=2, type=int,                help='Steps of 2x up-sampling as post-process.')
-add_arg('--generator-downscale',default=0, type=int,                help='Steps of 2x down-sampling as preprocess.')
-add_arg('--generator-filters',  default=[64], nargs='+', type=int,  help='Number of convolution units in network.')
-add_arg('--generator-blocks',   default=4, type=int,                help='Number of residual blocks per iteration.')
-add_arg('--generator-residual', default=2, type=int,                help='Number of layers in a residual block.')
-add_arg('--perceptual-layer',   default='conv2_2', type=str,        help='Which VGG layer to use as loss component.')
-add_arg('--perceptual-weight',  default=1e0, type=float,            help='Weight for VGG-layer perceptual loss.')
-add_arg('--device',             default='cpu', type=str,            help='Name of the CPU/GPU to use, for Theano.')
+add_arg('--is_test_img',        default=1, type=int,                     help='The category of the images to be processed (default: 1)')
+add_arg('--start_idx',          default=None, type=int,                  help='Index for the image to be firstly processed (default: None)')
+add_arg('--end_idx',            default=None, type=int,                  help='Index for the image to be lastly processed (default: None)')
+add_arg('--num_threads',        default=4, type=int,                     help='Number of concurrent threads (default: 4)')
+add_arg('--num_tasks',          default=100, type=int,                   help='Number of concurrent processing tasks (default: 100)')
+add_arg('--zoom',               default=1, type=int,                     help='Resolution increase factor for inference.')
+add_arg('--rendering-tile',     default=80, type=int,                    help='Size of tiles used for rendering images.')
+add_arg('--rendering-overlap',  default=24, type=int,                    help='Number of pixels padding around each tile.')
+add_arg('--generator-upscale',  default=2, type=int,                     help='Steps of 2x up-sampling as post-process.')
+add_arg('--generator-downscale',default=0, type=int,                     help='Steps of 2x down-sampling as preprocess.')
+add_arg('--generator-filters',  default=[64], nargs='+', type=int,       help='Number of convolution units in network.')
+add_arg('--generator-blocks',   default=4, type=int,                     help='Number of residual blocks per iteration.')
+add_arg('--generator-residual', default=2, type=int,                     help='Number of layers in a residual block.')
+add_arg('--device',             default='cpu', type=str,                 help='Name of the CPU/GPU to use, for Theano.')
 args = parser.parse_args()
 
 
@@ -80,7 +83,7 @@ T.nnet.softminus = lambda x: x - T.nnet.softplus(x)
 
 # Deep Learning Framework
 import lasagne
-from lasagne.layers import Conv2DLayer as ConvLayer, Pool2DLayer as PoolLayer
+from lasagne.layers import Conv2DLayer as ConvLayer
 from lasagne.layers import InputLayer, ElemwiseSumLayer
 
 print('  - Using the device `{}` for neural computation.\n'.format(theano.config.device))
@@ -164,35 +167,6 @@ class Model(object):
 
         self.network['out'] = ConvLayer(self.last_layer(), 3, filter_size=(7,7), pad=(3,3), nonlinearity=None)
 
-    def setup_perceptual(self, input):
-        """Use lasagne to create a network of convolution layers using pre-trained VGG19 weights.
-        """
-        offset = np.array([103.939, 116.779, 123.680], dtype=np.float32).reshape((1,3,1,1))
-        self.network['percept'] = lasagne.layers.NonlinearityLayer(input, lambda x: ((x+0.5)*255.0) - offset)
-
-        self.network['mse'] = self.network['percept']
-        self.network['conv1_1'] = ConvLayer(self.network['percept'], 64, 3, pad=1)
-        self.network['conv1_2'] = ConvLayer(self.network['conv1_1'], 64, 3, pad=1)
-        self.network['pool1']   = PoolLayer(self.network['conv1_2'], 2, mode='max')
-        self.network['conv2_1'] = ConvLayer(self.network['pool1'],   128, 3, pad=1)
-        self.network['conv2_2'] = ConvLayer(self.network['conv2_1'], 128, 3, pad=1)
-        self.network['pool2']   = PoolLayer(self.network['conv2_2'], 2, mode='max')
-        self.network['conv3_1'] = ConvLayer(self.network['pool2'],   256, 3, pad=1)
-        self.network['conv3_2'] = ConvLayer(self.network['conv3_1'], 256, 3, pad=1)
-        self.network['conv3_3'] = ConvLayer(self.network['conv3_2'], 256, 3, pad=1)
-        self.network['conv3_4'] = ConvLayer(self.network['conv3_3'], 256, 3, pad=1)
-        self.network['pool3']   = PoolLayer(self.network['conv3_4'], 2, mode='max')
-        self.network['conv4_1'] = ConvLayer(self.network['pool3'],   512, 3, pad=1)
-        self.network['conv4_2'] = ConvLayer(self.network['conv4_1'], 512, 3, pad=1)
-        self.network['conv4_3'] = ConvLayer(self.network['conv4_2'], 512, 3, pad=1)
-        self.network['conv4_4'] = ConvLayer(self.network['conv4_3'], 512, 3, pad=1)
-        self.network['pool4']   = PoolLayer(self.network['conv4_4'], 2, mode='max')
-        self.network['conv5_1'] = ConvLayer(self.network['pool4'],   512, 3, pad=1)
-        self.network['conv5_2'] = ConvLayer(self.network['conv5_1'], 512, 3, pad=1)
-        self.network['conv5_3'] = ConvLayer(self.network['conv5_2'], 512, 3, pad=1)
-        self.network['conv5_4'] = ConvLayer(self.network['conv5_3'], 512, 3, pad=1)
-
-
     #------------------------------------------------------------------------------------------------------------------
     # Input / Output
     #------------------------------------------------------------------------------------------------------------------
@@ -204,7 +178,7 @@ class Model(object):
             yield (name, l)
 
     def get_filename(self, absolute=False):
-        filename = 'ne%ix-%s-%s-%s.pkl.bz2' % (args.zoom, args.type, args.model, __version__)
+        filename = 'ne%ix-%s-%s-%s.pkl.bz2' % (args.zoom, 'photo', 'repair', __version__)
         return os.path.join(os.path.dirname(__file__), filename) if absolute else filename
 
     def load_model(self):
@@ -231,54 +205,51 @@ class Model(object):
         self.predict = theano.function([seed_tensor], output)
 
 
-class NeuralEnhancer(object):
+def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
+    assert(num_threads > 0 and num_tasks > 0)
 
-    def __init__(self):
-        if len(args.files) == 0: error("Specify the image(s) to enhance on the command-line.")
-        print('Enhancing {} image(s) specified on the command-line.'.format(len(args.files)))
+    landmarks_path = TEST_LANDMARKS_PATH if args.is_test_img else TRAIN_LANDMARKS_PATH # noqa
+    img_dir = TEST_IMAGES_PATH if args.is_test_img else TRAIN_IMAGES_PATH
 
-        self.model = Model()
+    loose_landmarks = pd.read_csv(landmarks_path,
+                                  header=None,
+                                  low_memory=False)
 
-    def match_histograms(self, A, B, rng=(0.0, 255.0), bins=64):
-        (Ha, Xa), (Hb, Xb) = [np.histogram(i, bins=bins, range=rng, density=True) for i in [A, B]]
-        X = np.linspace(rng[0], rng[1], bins, endpoint=True)
-        Hpa, Hpb = [np.cumsum(i) * (rng[1] - rng[0]) ** 2 / float(bins) for i in [Ha, Hb]]
-        inv_Ha = scipy.interpolate.interp1d(X, Hpa, bounds_error=False, fill_value='extrapolate')
-        map_Hb = scipy.interpolate.interp1d(Hpb, X, bounds_error=False, fill_value='extrapolate')
-        return map_Hb(inv_Ha(A).clip(0.0, 255.0))
+    start_idx = 1 if start_idx is None else start_idx + 1
+    end_idx = loose_landmarks[0].shape[0] - 1 if end_idx is None else end_idx + 1 # noqa
+    model = Model()
 
-    def process(self, original):
+    def process_func(idx):
+        print("go")
+        img_name = loose_landmarks[0][idx]
+        img = scipy.ndimage.imread(img_dir+'/'+img_name+'.jpg', mode='RGB')
+
         # Snap the image to a shape that's compatible with the generator (2x, 4x)
         s = 2 ** max(args.generator_upscale, args.generator_downscale)
-        by, bx = original.shape[0] % s, original.shape[1] % s
-        original = original[by-by//2:original.shape[0]-by//2,bx-bx//2:original.shape[1]-bx//2,:]
+        by, bx = img.shape[0] % s, img.shape[1] % s
+        img = img[by-by//2:img.shape[0]-by//2,bx-bx//2:img.shape[1]-bx//2,:]
 
         # Prepare paded input image as well as output buffer of zoomed size.
         s, p, z = args.rendering_tile, args.rendering_overlap, args.zoom
-        image = np.pad(original, ((p, p), (p, p), (0, 0)), mode='reflect')
-        output = np.zeros((original.shape[0] * z, original.shape[1] * z, 3), dtype=np.float32)
+        image = np.pad(img, ((p, p), (p, p), (0, 0)), mode='reflect')
+        output = np.zeros((img.shape[0] * z, img.shape[1] * z, 3), dtype=np.float32)
 
         # Iterate through the tile coordinates and pass them through the network.
-        for y, x in itertools.product(range(0, original.shape[0], s), range(0, original.shape[1], s)):
+        for y, x in itertools.product(range(0, img.shape[0], s), range(0, img.shape[1], s)):
             img = np.transpose(image[y:y+p*2+s,x:x+p*2+s,:] / 255.0 - 0.5, (2, 0, 1))[np.newaxis].astype(np.float32)
-            *_, repro = self.model.predict(img)
+            *_, repro = model.predict(img)
             output[y*z:(y+s)*z,x*z:(x+s)*z,:] = np.transpose(repro[0] + 0.5, (1, 2, 0))[p*z:-p*z,p*z:-p*z,:]
-            print('.', end='', flush=True)
         output = output.clip(0.0, 1.0) * 255.0
 
-        # Match color histograms if the user specified this option.
-        if args.rendering_histogram:
-            for i in range(3):
-                output[:,:,i] = self.match_histograms(output[:,:,i], original[:,:,i])
+        return (scipy.misc.toimage(output, cmin=0, cmax=255), img_name)
 
-        return scipy.misc.toimage(output, cmin=0, cmax=255)
+    with ThreadPool(args.num_threads) as pool:
+        for img, img_name in pool.process_items_concurrently(
+                                                range(start_idx, end_idx+1),
+                                                process_func=process_func,
+                                                max_items_in_flight=num_tasks):
+            img.save(img_dir+'/'+img_name+'_deblocked.PNG')
 
 
 if __name__ == "__main__":
-    enhancer = NeuralEnhancer()
-    for filename in args.files: # TODO: parallel processing
-        print(filename, end=' ')
-        img = scipy.ndimage.imread(filename, mode='RGB')
-        out = enhancer.process(img)
-        out.save(os.path.splitext(filename)[0]+'_ne%ix.png' % args.zoom)
-        print(flush=True)
+    deblock_jpeg(args.num_threads, args.num_tasks, args.start_idx, args.end_idx)
