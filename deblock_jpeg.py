@@ -220,7 +220,7 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
     model = Model()
 
     def process_func(idx):
-        print("go")
+        predict = model.predict.copy()
         img_name = loose_landmarks[0][idx]
         img = scipy.ndimage.imread(img_dir+'/'+img_name+'.jpg', mode='RGB')
 
@@ -237,7 +237,7 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
         # Iterate through the tile coordinates and pass them through the network.
         for y, x in itertools.product(range(0, img.shape[0], s), range(0, img.shape[1], s)):
             img = np.transpose(image[y:y+p*2+s,x:x+p*2+s,:] / 255.0 - 0.5, (2, 0, 1))[np.newaxis].astype(np.float32)
-            *_, repro = model.predict(img)
+            *_, repro = predict(img)
             output[y*z:(y+s)*z,x*z:(x+s)*z,:] = np.transpose(repro[0] + 0.5, (1, 2, 0))[p*z:-p*z,p*z:-p*z,:]
         output = output.clip(0.0, 1.0) * 255.0
 
@@ -248,7 +248,7 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
                                                 range(start_idx, end_idx+1),
                                                 process_func=process_func,
                                                 max_items_in_flight=num_tasks):
-            img.save(img_dir+'/'+img_name+'_deblocked.PNG')
+            img.save(img_dir+'/'+img_name+'_deblocked.PNG', 'PNG')
 
 
 if __name__ == "__main__":
