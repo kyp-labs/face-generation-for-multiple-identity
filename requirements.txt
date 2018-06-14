@@ -3,5 +3,5 @@ scipy>=1.0.0
 Pillow>=3.2.0
 pandas>=0.20.3
 matplotlib>=2.1.0
-Theano==0.8.2
+Theano==1.0
 git+https://github.com/Lasagne/Lasagne.git@61b1ad1#egg=Lasagne==0.2-dev

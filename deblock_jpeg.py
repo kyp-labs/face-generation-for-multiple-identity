@@ -29,9 +29,9 @@ import collections
 import pandas as pd
 from thread_pool import ThreadPool
 
-TEST_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_test.csv' # noqa
+TEST_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_test.csv'
 TEST_IMAGES_PATH = './dataset/VGGFACE2/test'
-TRAIN_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_train.csv' # noqa
+TRAIN_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_train.csv'
 TRAIN_IMAGES_PATH = './dataset/VGGFACE2/train'
 
 # Configure all options first so we can later custom-load other libraries (Theano) based on device specified by user.
@@ -122,7 +122,6 @@ class Model(object):
 
         config, params = self.load_model()
         self.setup_generator(self.last_layer(), config)
-
         self.load_generator(params)
         self.compile()
 
@@ -208,7 +207,7 @@ class Model(object):
 def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
     assert(num_threads > 0 and num_tasks > 0)
 
-    landmarks_path = TEST_LANDMARKS_PATH if args.is_test_img else TRAIN_LANDMARKS_PATH # noqa
+    landmarks_path = TEST_LANDMARKS_PATH if args.is_test_img else TRAIN_LANDMARKS_PATH
     img_dir = TEST_IMAGES_PATH if args.is_test_img else TRAIN_IMAGES_PATH
 
     loose_landmarks = pd.read_csv(landmarks_path,
@@ -216,7 +215,8 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
                                   low_memory=False)
 
     start_idx = 1 if start_idx is None else start_idx + 1
-    end_idx = loose_landmarks[0].shape[0] - 1 if end_idx is None else end_idx + 1 # noqa
+    end_idx = loose_landmarks[0].shape[0] - 1 if end_idx is None else end_idx + 1
+
     model = Model()
 
     def process_func(idx):
