@@ -223,6 +223,7 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
         predict = model.predict.copy()
         img_name = loose_landmarks[0][idx]
         img = scipy.ndimage.imread(img_dir+'/'+img_name+'.jpg', mode='RGB')
+        print('processing ', img_name, '...')
 
         # Snap the image to a shape that's compatible with the generator (2x, 4x)
         s = 2 ** max(args.generator_upscale, args.generator_downscale)
@@ -249,6 +250,7 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
                                                 process_func=process_func,
                                                 max_items_in_flight=num_tasks):
             img.save(img_dir+'/'+img_name+'_deblocked.PNG', 'PNG')
+            print('saved ', img_name, '...')
 
 
 if __name__ == "__main__":

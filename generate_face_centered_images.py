@@ -65,6 +65,7 @@ def generate_face_centered_images(num_threads=4, num_tasks=100,
         left_mouth = loose_landmarks.T[idx][1:].values[6:8].astype('float32')
         right_mouth = loose_landmarks.T[idx][1:].values[8:].astype('float32')
         img = PIL.Image.open(img_dir+'/'+img_name+'.jpg')
+        print('processing ', img_name, '...')
 
         # Choose oriented crop rectangle.
         eye_avg = (left_eye + right_eye) * 0.5 + 0.5
@@ -152,6 +153,7 @@ def generate_face_centered_images(num_threads=4, num_tasks=100,
             filename = img_dir + '/' + img_name +\
                        '_' + str(args.resolution)+'.PNG'
             img.save(filename, 'PNG')
+            print('saved ', img_name, '...')
 
 
 if __name__ == '__main__':
