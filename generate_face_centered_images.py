@@ -22,17 +22,17 @@ parser = argparse.ArgumentParser(
             description='Generate face-centered images.',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 add_arg = parser.add_argument
-add_arg('--is_test_img', type=int, default=1,
+add_arg('--is-test-img', type=int, default=1,
         help='The category of the images to be processed (default: 1)')
-add_arg('--start_idx', type=int, default=None,
+add_arg('--start-idx', type=int, default=None,
         help='Index for the image to be firstly processed (default: None)')
-add_arg('--end_idx', type=int, default=None,
+add_arg('--end-idx', type=int, default=None,
         help='Index for the image to be lastly processed (default: None)')
 add_arg('--resolution', type=int, default=256,
         help='Target resolution (default: 256)')
-add_arg('--num_threads', type=int, default=4,
+add_arg('--num-threads', type=int, default=4,
         help='Number of concurrent threads (default: 4)')
-add_arg('--num_tasks', type=int, default=100,
+add_arg('--num-tasks', type=int, default=100,
         help='Number of concurrent processing tasks (default: 100)')
 
 args = parser.parse_args()

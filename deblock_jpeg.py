@@ -1,7 +1,6 @@
 # !/usr/bin/env python3
 """                          _              _
-  _ __   ___ _   _ _ __ __ _| |   ___ _ __ | |__   __ _ _ __   ___ ___
- | '_ \ / _ \ | | | '__/ _` | |  / _ \ '_ \| '_ \ / _` | '_ \ / __/ _ \\
+  _ __   ___ _   _ _ __ __ _| |   ___ _ __ | |__   __ _ _ __   ___ ___ | '_ \ / _ \ | | | '__/ _` | |  / _ \ '_ \| '_ \ / _` | '_ \ / __/ _ \\
  | | | |  __/ |_| | | | (_| | | |  __/ | | | | | | (_| | | | | (_|  __/
  |_| |_|\___|\__,_|_|  \__,_|_|  \___|_| |_|_| |_|\__,_|_| |_|\___\___|
 
@@ -27,7 +26,7 @@ import argparse
 import itertools
 import collections
 import pandas as pd
-from thread_pool import ThreadPool
+#from thread_pool import ThreadPool
 
 TEST_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_test.csv'
 TEST_IMAGES_PATH = './dataset/VGGFACE2/test'
@@ -38,11 +37,11 @@ TRAIN_IMAGES_PATH = './dataset/VGGFACE2/train'
 parser = argparse.ArgumentParser(description='Generate a new image by applying style onto a content image.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 add_arg = parser.add_argument
-add_arg('--is_test_img',        default=1, type=int,                     help='The category of the images to be processed (default: 1)')
-add_arg('--start_idx',          default=None, type=int,                  help='Index for the image to be firstly processed (default: None)')
-add_arg('--end_idx',            default=None, type=int,                  help='Index for the image to be lastly processed (default: None)')
-add_arg('--num_threads',        default=4, type=int,                     help='Number of concurrent threads (default: 4)')
-add_arg('--num_tasks',          default=100, type=int,                   help='Number of concurrent processing tasks (default: 100)')
+add_arg('--is-test-img',        default=1, type=int,                     help='The category of the images to be processed (default: 1)')
+add_arg('--start-idx',          default=None, type=int,                  help='Index for the image to be firstly processed (default: None)')
+add_arg('--end-idx',            default=None, type=int,                  help='Index for the image to be lastly processed (default: None)')
+add_arg('--num-threads',        default=4, type=int,                     help='Number of concurrent threads (default: 4)')
+add_arg('--num-tasks',          default=100, type=int,                   help='Number of concurrent processing tasks (default: 100)')
 add_arg('--zoom',               default=1, type=int,                     help='Resolution increase factor for inference.')
 add_arg('--rendering-tile',     default=80, type=int,                    help='Size of tiles used for rendering images.')
 add_arg('--rendering-overlap',  default=24, type=int,                    help='Number of pixels padding around each tile.')
@@ -244,13 +243,20 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
 
         return (scipy.misc.toimage(output, cmin=0, cmax=255), img_name)
 
-    with ThreadPool(args.num_threads) as pool:
-        for img, img_name in pool.process_items_concurrently(
-                                                range(start_idx, end_idx+1),
-                                                process_func=process_func,
-                                                max_items_in_flight=num_tasks):
-            img.save(img_dir+'/'+img_name+'_deblocked.PNG', 'PNG')
-            print('saved ', img_name, '...')
+    # Single threading execution code
+    for idx in range(start_idx, end_idx+1):
+        img, img_name = process_func(idx)
+        img.save(img_dir+'/'+img_name+'_deblocked.PNG', 'PNG')
+        print('saved ', img_name, '...')
+
+#    # Multithreading execution code
+#    with ThreadPool(args.num_threads) as pool:
+#        for img, img_name in pool.process_items_concurrently(
+#                                                range(start_idx, end_idx+1),
+#                                                process_func=process_func,
+#                                                max_items_in_flight=num_tasks):
+#            img.save(img_dir+'/'+img_name+'_deblocked.PNG', 'PNG')
+#            print('saved ', img_name, '...')
 
 
 if __name__ == "__main__":
