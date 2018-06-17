@@ -1,6 +1,7 @@
 # !/usr/bin/env python3
 """                          _              _
-  _ __   ___ _   _ _ __ __ _| |   ___ _ __ | |__   __ _ _ __   ___ ___ | '_ \ / _ \ | | | '__/ _` | |  / _ \ '_ \| '_ \ / _` | '_ \ / __/ _ \\
+  _ __   ___ _   _ _ __ __ _| |   ___ _ __ | |__   __ _ _ __   ___ ___
+ | '_ \ / _ \ | | | '__/ _` | |  / _ \ '_ \| '_ \ / _` | '_ \ / __/ _ \\
  | | | |  __/ |_| | | | (_| | | |  __/ | | | | | | (_| | | | | (_|  __/
  |_| |_|\___|\__,_|_|  \__,_|_|  \___|_| |_|_| |_|\__,_|_| |_|\___\___|
 
@@ -50,7 +51,7 @@ add_arg('--generator-downscale',default=0, type=int,                     help='S
 add_arg('--generator-filters',  default=[64], nargs='+', type=int,       help='Number of convolution units in network.')
 add_arg('--generator-blocks',   default=4, type=int,                     help='Number of residual blocks per iteration.')
 add_arg('--generator-residual', default=2, type=int,                     help='Number of layers in a residual block.')
-add_arg('--device',             default='cpu', type=str,                 help='Name of the CPU/GPU to use, for Theano.')
+add_arg('--device',             default='cuda', type=str,                 help='Name of the CPU/GPU to use, for Theano.')
 args = parser.parse_args()
 
 
