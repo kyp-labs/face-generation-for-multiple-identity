@@ -33,14 +33,14 @@ TEST_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_test.csv'
 TEST_IMAGES_PATH = './dataset/VGGFACE2/test'
 TRAIN_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_train.csv'
 TRAIN_IMAGES_PATH = './dataset/VGGFACE2/train'
+IDENTITY_INFO_PATH = './identity_info.csv'
+IMAGE_OUTPUT_PATH = './deblocked'
 
 # Configure all options first so we can later custom-load other libraries (Theano) based on device specified by user.
 parser = argparse.ArgumentParser(description='Generate a new image by applying style onto a content image.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 add_arg = parser.add_argument
-add_arg('--is-test-img',        default=1, type=int,                     help='The category of the images to be processed (default: 1)')
-add_arg('--start-idx',          default=None, type=int,                  help='Index for the image to be firstly processed (default: None)')
-add_arg('--end-idx',            default=None, type=int,                  help='Index for the image to be lastly processed (default: None)')
+add_arg('--identity-info',      default=IDENTITY_INFO_PATH, type=str,    help='Path of identity_info.csv')
 add_arg('--num-threads',        default=4, type=int,                     help='Number of concurrent threads (default: 4)')
 add_arg('--num-tasks',          default=100, type=int,                   help='Number of concurrent processing tasks (default: 100)')
 add_arg('--zoom',               default=1, type=int,                     help='Resolution increase factor for inference.')
@@ -204,26 +204,12 @@ class Model(object):
         self.predict = theano.function([seed_tensor], output)
 
 
-def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
-    assert(num_threads > 0 and num_tasks > 0)
-
-    landmarks_path = TEST_LANDMARKS_PATH if args.is_test_img else TRAIN_LANDMARKS_PATH
-    img_dir = TEST_IMAGES_PATH if args.is_test_img else TRAIN_IMAGES_PATH
-
-    loose_landmarks = pd.read_csv(landmarks_path,
-                                  header=None,
-                                  low_memory=False)
-
-    start_idx = 1 if start_idx is None else start_idx + 1
-    end_idx = loose_landmarks[0].shape[0] - 1 if end_idx is None else end_idx + 1
-
-    model = Model()
-
+def deblock_jpeg(model, loose_landmarks, img_dir, start_idx, end_idx, num_threads=4, num_tasks=100):
     def process_func(idx):
         predict = model.predict.copy()
         img_name = loose_landmarks[0][idx]
         img = scipy.ndimage.imread(img_dir+'/'+img_name+'.jpg', mode='RGB')
-        print('processing ', img_name, '...')
+        print('->     processing image: ', img_name, '...')
 
         # Snap the image to a shape that's compatible with the generator (2x, 4x)
         s = 2 ** max(args.generator_upscale, args.generator_downscale)
@@ -247,8 +233,9 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
     # Single threading execution code
     for idx in range(start_idx, end_idx+1):
         img, img_name = process_func(idx)
-        img.save(img_dir+'/'+img_name+'_deblocked.PNG', 'PNG')
-        print('saved ', img_name, '...')
+        img_name = img_name.replace('/', '-')
+        img.save(IMAGE_OUTPUT_PATH+'/'+img_name+'.PNG', 'PNG')
+        print('->     saved ', img_name, '...')
 
 #    # Multithreading execution code
 #    with ThreadPool(args.num_threads) as pool:
@@ -261,4 +248,41 @@ def deblock_jpeg(num_threads=4, num_tasks=100, start_idx=None, end_idx=None):
 
 
 if __name__ == "__main__":
-    deblock_jpeg(args.num_threads, args.num_tasks, args.start_idx, args.end_idx)
+    assert(args.num_threads > 0 and args.num_tasks > 0)
+
+    model = Model()
+
+    assert(os.path.exists(args.identity_info))
+    identity_info = pd.read_csv(args.identity_info)
+
+    if not os.path.exists(IMAGE_OUTPUT_PATH):
+        os.makedirs(IMAGE_OUTPUT_PATH)
+
+
+    assert(os.path.exists(TEST_LANDMARKS_PATH))
+    assert(os.path.exists(TRAIN_LANDMARKS_PATH))
+    print('loading landmarks.csv...')
+    loose_landmarks_test = pd.read_csv(TEST_LANDMARKS_PATH,
+                                       header=None,
+                                       low_memory=False)
+    loose_landmarks_train = pd.read_csv(TRAIN_LANDMARKS_PATH,
+                                        header=None,
+                                        low_memory=False)
+
+    assert(os.path.exists(TEST_IMAGES_PATH))
+    assert(os.path.exists(TRAIN_IMAGES_PATH))
+
+    for i in range(len(identity_info['Class_ID'])):
+        class_id = identity_info['Class_ID'][i]
+        name = identity_info['Name'][i]
+        print('processing identity: ', class_id, name, '...')
+
+        is_train = identity_info['Flag'][i]
+        start_idx = identity_info['Start_Idx'][i] + 1
+        end_idx = start_idx + identity_info['Sample_Num'][i] - 1
+
+        loose_landmarks = loose_landmarks_train if is_train else loose_landmarks_test
+        img_dir = TRAIN_IMAGES_PATH if is_train else TEST_IMAGES_PATH
+
+        deblock_jpeg(model, loose_landmarks, img_dir, start_idx, end_idx,
+                     args.num_threads, args.num_tasks)
