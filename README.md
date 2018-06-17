@@ -1,6 +1,6 @@
 # How to deblock JPEG images in VGGFACE2 dataset
 
-1. [Download](https://github.com/alexjc/neural-enhance/releases/download/v0.3/ne1x-photo-repair-0.3.pkl.bz2) the pretrained model for JPEG artifact removal
+1. [Download](https://github.com/alexjc/neural-enhance/releases/download/v0.3/ne1x-photo-repair-0.3.pkl.bz2) the pretrained model for JPEG artifact removal and store on the repository ('./')
 2. [Download](http://www.robots.ox.ac.uk/~vgg/data/vgg_face2/) VGGFACE2 training set & test set and store in './dataset/VGGFACE2/train/' and './dataset/VGGFACE2/test/' respectively.
 3. [Download](http://www.robots.ox.ac.uk/~vgg/data/vgg_face2/) bb_landmark and store in './dataset/VGGFACE2/bb_landmark/'
 4. Execute `deblock_jpeg.py' as follows:
