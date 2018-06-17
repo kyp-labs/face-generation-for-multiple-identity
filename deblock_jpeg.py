@@ -234,7 +234,7 @@ def deblock_jpeg(model, loose_landmarks, img_dir, start_idx, end_idx, num_thread
     for idx in range(start_idx, end_idx+1):
         img, img_name = process_func(idx)
         img_name = img_name.replace('/', '-')
-        img.save(IMAGE_OUTPUT_PATH+'/'+img_name+'.PNG', 'PNG')
+        img.save(IMAGE_OUTPUT_PATH+'/'+img_name+'.png', 'PNG')
         print('->     saved ', img_name, '...')
 
 #    # Multithreading execution code
