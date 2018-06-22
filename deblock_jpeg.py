@@ -208,7 +208,13 @@ def deblock_jpeg(model, loose_landmarks, img_dir, start_idx, end_idx, num_thread
     def process_func(idx):
         predict = model.predict.copy()
         img_name = loose_landmarks[0][idx]
-        img = scipy.ndimage.imread(img_dir+'/'+img_name+'.jpg', mode='RGB')
+
+        try:
+            img = scipy.ndimage.imread(img_dir+'/'+img_name+'.jpg', mode='RGB')
+        except FileNotFoundError:
+            print(img_dir+'/'+img_name+'.jpg does not exist')
+            return
+
         print('->     processing image: ', img_name, '...')
 
         # Snap the image to a shape that's compatible with the generator (2x, 4x)

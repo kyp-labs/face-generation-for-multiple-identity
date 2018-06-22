@@ -5,6 +5,7 @@ The implementaion is a little modified from:
     https://github.com/tkarras/progressive_growing_of_gans/blob/master/dataset_tool.py
 """
 
+import os
 import PIL
 import argparse
 import numpy as np
@@ -13,23 +14,22 @@ from scipy import ndimage
 from thread_pool import ThreadPool
 
 TEST_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_test.csv' # noqa
-TEST_IMAGES_PATH = './dataset/VGGFACE2/test'
 TRAIN_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_train.csv' # noqa
-TRAIN_IMAGES_PATH = './dataset/VGGFACE2/train'
+IDENTITY_INFO_PATH = './identity_info.csv'
+IMAGES_PATH = './dataset/hr_images'
+OUTPUT_PATH = './output'
 
 # Configure all options
 parser = argparse.ArgumentParser(
             description='Generate face-centered images.',
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 add_arg = parser.add_argument
-add_arg('--is-test-img', type=int, default=1,
-        help='The category of the images to be processed (default: 1)')
-add_arg('--start-idx', type=int, default=None,
-        help='Index for the image to be firstly processed (default: None)')
-add_arg('--end-idx', type=int, default=None,
-        help='Index for the image to be lastly processed (default: None)')
-add_arg('--resolution', type=int, default=256,
+add_arg('--identity-info', type=str, default=IDENTITY_INFO_PATH,
+        help='Path of identity_info.csv')
+add_arg('--resolution', type=int, default=512,
         help='Target resolution (default: 256)')
+add_arg('--scale', type=int, default=4,
+        help='Scale by super-resolution (default: 4)')
 add_arg('--num-threads', type=int, default=4,
         help='Number of concurrent threads (default: 4)')
 add_arg('--num-tasks', type=int, default=100,
@@ -40,19 +40,10 @@ args = parser.parse_args()
 
 # ----------------------------------------------------------------------------
 
-def generate_face_centered_images(num_threads=4, num_tasks=100,
+def generate_face_centered_images(loose_landmarks, img_dir, outdir,
+                                  num_threads=4, num_tasks=100, scale=4,
                                   start_idx=None, end_idx=None):
     assert(num_threads > 0 and num_tasks > 0)
-
-    landmarks_path = TEST_LANDMARKS_PATH if args.is_test_img else TRAIN_LANDMARKS_PATH # noqa
-    img_dir = TEST_IMAGES_PATH if args.is_test_img else TRAIN_IMAGES_PATH
-
-    loose_landmarks = pd.read_csv(landmarks_path,
-                                  header=None,
-                                  low_memory=False)
-
-    start_idx = 1 if start_idx is None else start_idx + 1
-    end_idx = loose_landmarks[0].shape[0] - 1 if end_idx is None else end_idx + 1 # noqa
 
     def rot90(v):
         return np.array([-v[1], v[0]])
@@ -60,11 +51,17 @@ def generate_face_centered_images(num_threads=4, num_tasks=100,
     def process_func(idx):
         # load original image
         img_name = loose_landmarks[0][idx]
-        left_eye = loose_landmarks.T[idx][1:].values[0:2].astype('float32')
-        right_eye = loose_landmarks.T[idx][1:].values[2:4].astype('float32')
-        left_mouth = loose_landmarks.T[idx][1:].values[6:8].astype('float32')
-        right_mouth = loose_landmarks.T[idx][1:].values[8:].astype('float32')
-        img = PIL.Image.open(img_dir+'/'+img_name+'.jpg')
+        class_id, img_name = img_name.split('/')
+
+        left_eye = loose_landmarks.T[idx][1:].values[0:2].astype('float32') * scale
+        right_eye = loose_landmarks.T[idx][1:].values[2:4].astype('float32') * scale
+        left_mouth = loose_landmarks.T[idx][1:].values[6:8].astype('float32') * scale
+        right_mouth = loose_landmarks.T[idx][1:].values[8:].astype('float32') * scale
+        try:
+            img = PIL.Image.open(img_dir+'/'+class_id+'-'+img_name+'.png')
+        except FileNotFoundError:
+            print(img_dir+'/'+class_id+'-'+img_name+'.png does not exist')
+            return
         print('processing ', img_name, '...')
 
         # Choose oriented crop rectangle.
@@ -150,12 +147,46 @@ def generate_face_centered_images(num_threads=4, num_tasks=100,
                                                 range(start_idx, end_idx+1),
                                                 process_func=process_func,
                                                 max_items_in_flight=num_tasks):
-            filename = img_dir + '/' + img_name +\
-                       '_' + str(args.resolution)+'.PNG'
+            filename = outdir + '/' + img_name + '.png'
             img.save(filename, 'PNG')
             print('saved ', img_name, '...')
 
 
 if __name__ == '__main__':
-    generate_face_centered_images(args.num_threads, args.num_tasks,
-                                  args.start_idx, args.end_idx)
+    assert(os.path.isdir(IMAGES_PATH))
+    assert(os.path.exists(args.identity_info))
+    identity_info = pd.read_csv(args.identity_info)
+
+    assert(os.path.exists(TEST_LANDMARKS_PATH))
+    assert(os.path.exists(TRAIN_LANDMARKS_PATH))
+    print('loading landmarks.csv...')
+    loose_landmarks_test = pd.read_csv(TEST_LANDMARKS_PATH,
+                                       header=None,
+                                       low_memory=False)
+    loose_landmarks_train = pd.read_csv(TRAIN_LANDMARKS_PATH,
+                                        header=None,
+                                        low_memory=False)
+
+    if not os.path.exists(OUTPUT_PATH):
+        os.mkdir(OUTPUT_PATH)
+    if not os.path.exists(OUTPUT_PATH+'/'+str(args.resolution)):
+        os.mkdir(OUTPUT_PATH+'/'+str(args.resolution))
+
+    for i in range(len(identity_info['Class_ID'])):
+        class_id = identity_info['Class_ID'][i]
+        name = identity_info['Name'][i]
+        print('processing identity: ', class_id, name, '...')
+
+        out_dir = OUTPUT_PATH + '/' + str(args.resolution) + '/' + class_id
+        if not os.path.exists(out_dir):
+            os.mkdir(out_dir)
+
+        is_train = identity_info['Flag'][i]
+        start_idx = identity_info['Start_Idx'][i] + 1
+        end_idx = start_idx + identity_info['Sample_Num'][i] - 1
+
+        loose_landmarks = loose_landmarks_train if is_train else loose_landmarks_test
+
+        generate_face_centered_images(loose_landmarks, IMAGES_PATH, out_dir,
+                                      args.num_threads, args.num_tasks, args.scale,
+                                      start_idx, end_idx)
