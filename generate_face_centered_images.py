@@ -4,6 +4,7 @@ All resources can be downloaded from:
 The implementaion is a little modified from:
     https://github.com/tkarras/progressive_growing_of_gans/blob/master/dataset_tool.py
 """
+# flake8: noqa
 
 import os
 import PIL
