@@ -14,3 +14,13 @@ python deblock_jpeg.py --identity-info=./identity_info2.csv # for process 2
 ```
 
 **Output images will be stored in './deblocked' directory.**
+
+
+# How to run super-resolution
+
+1. Clone the following repository: `https://github.com/kyp-labs/dcscn-super-resolution`
+2. Make a directory named `input` on your local repository
+3. Copy all '.png' files in `input` directory
+4. Run the following script: `python sr.py`
+
+**Output images will be stored in './output' directory.**
