@@ -24,3 +24,16 @@ python deblock_jpeg.py --identity-info=./identity_info2.csv # for process 2
 4. Run the following script: `python sr.py`
 
 **Output images will be stored in './output' directory.**
+
+# How to run face-centered image generation
+
+1. Make a directory `dataset/hr_images` and put all high-resolution images in it
+2. Run the following script: `python generate_face_centered_images.py` (default: 512x512)
+
+*Note* that you should split `identity_info.csv` into multiple files if you want to run parallel on multi-processes:
+```
+python generate_face_centered_images.py --identity-info=./identity_info1.csv # for process 1
+python generate_face_centered_images.py --identity-info=./identity_info2.csv # for process 2
+...
+```
+**Output images will be stored in './output/resolution/class-id' directory.**
