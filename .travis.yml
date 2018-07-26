@@ -10,10 +10,10 @@ sudo: false
 
 install:
     # pylint,flake8: static analysis and style checks against PEP8
-    - pip install -U pylint
+    - pip install -U pylint_runner
     - pip install -U flake8
 
 script:
     # Static analysis
-    - find . -iname "*.py" | xargs pylint
+    - pylint_runner
     - flake8 .
