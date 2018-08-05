@@ -9,11 +9,11 @@ env:
 sudo: false
 
 install:
-    # pylint,flake8: static analysis and style checks against PEP8
-    - pip install -U pylint
+    # flake8: static analysis and style checks
     - pip install -U flake8
+    - pip install -U flake8-bugbear
+    - pip install -U flake8-docstrings
 
 script:
     # Static analysis
-    - find . -iname "*.py" | xargs pylint
     - flake8 .
