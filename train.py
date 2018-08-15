@@ -1,10 +1,6 @@
 """train.py.
 
-This module includes the FaceGen class
-which has a model and train methods implementing the paper
-'High-Resolution Image Synthesis and
-    Semantic Manipulation with Conditional GANs'.
-
+This module includes the FaceGen class.
 
 Example:
     Run this module without options (:
