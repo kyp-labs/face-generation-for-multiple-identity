@@ -123,8 +123,6 @@ class PGConv2d(nn.Module):
             x = self.nonlinearity(x)
         if self.instancenorm:
             x = nn.InstanceNorm2d(self.out_channels)(x)
-        else:
-            x = nn.BatchNorm2d(self.out_channels)(x)
         return x
 
 

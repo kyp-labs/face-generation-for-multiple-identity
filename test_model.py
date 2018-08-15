@@ -14,7 +14,7 @@ from util.custom_transforms import Normalize, CenterSquareMask, \
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_dir',
-                    default= '/home/whikwon/Documents/github/download-celebA-HQ/tfrecord/', # noqa E501
+                    default= './test_data/', # noqa E501
                     help='dataset directory')
 args = parser.parse_args()
 
