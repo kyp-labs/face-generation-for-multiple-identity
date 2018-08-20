@@ -1,4 +1,4 @@
-"""Test U-Net"""
+"""Test U-Net."""
 
 from torchvision import transforms
 from torch.utils.data import DataLoader
@@ -10,7 +10,7 @@ from util.custom_transforms import Normalize, CenterSquareMask, \
 
 
 def test_unet():
-    """Test U-Net"""
+    """Test U-Net."""
     res = 256
     transform = transforms.Compose([Normalize(0.5, 0.5),
                                     CenterSquareMask(),
