@@ -176,3 +176,42 @@ class Normalize(object):
     def __str__(self):  # noqa: D105
         return self.__class__.__name__ + '(mean={0}, std={1})'.\
                 format(self.mean, self.std)
+
+
+class TargetMask(object):
+    """Add Square mask to the sample."""
+
+    def __init__(self, num_classes=10):
+        """constructor."""
+        self.num_classes = num_classes
+
+    def __call__(self, sample):
+        """caller.
+
+        Args:
+            sample (dict): {str: array} formatted data for training.
+
+        Returns:
+            sample (dict): {str: array} formatted data for training.
+
+        """
+        image = sample['image']
+        target_id = random.randint(0, self.num_classes-1)
+
+        resolution = image.shape[-2]
+        mask = np.zeros([resolution, resolution])
+
+        start_pos = resolution // 4
+        end_pos = resolution * 3 // 4
+
+        assert len(image.shape) == 3, \
+            f'image dims should be 3, not {len(image.shape)}'
+
+        mask[start_pos: end_pos, start_pos: end_pos] = target_id
+
+        sample['mask'] = mask
+        sample['target_id'] = target_id
+        return sample
+
+    def __str__(self):  # noqa: D105
+        return f'TargetMask:(num_classes={str(self.num_classes)})'
