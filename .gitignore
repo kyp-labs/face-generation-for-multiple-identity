@@ -6,6 +6,7 @@ logs
 test_data
 util/__pycache__
 model/__pycache__
-TrainingTest.ipynb
 dataset
+TrainingTest.ipynb
+test_spectral.py
 images

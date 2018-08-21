@@ -1,17 +1,15 @@
 """
-Spectral Normalization.
-
-https://arxiv.org/abs/1802.05957
+Spectral Normalization from https://arxiv.org/abs/1802.05957
 """
 import torch
 from torch.nn.functional import normalize
+#from torch.nn.parameter import Parameter
 
 
 class SpectralNorm(object):
     """SpectralNorm class."""
 
     def __init__(self, name='weight', n_power_iterations=1, dim=0, eps=1e-12):
-        """Initialize."""
         self.name = name
         self.dim = dim
 
@@ -29,6 +27,7 @@ class SpectralNorm(object):
         Args:
             module (nn.Module): containing module
         """
+
         weight = getattr(module, self.name + '_orig')
         u = getattr(module, self.name + '_u')
         weight_mat = weight
@@ -36,7 +35,7 @@ class SpectralNorm(object):
         if self.dim != 0:
             # permute dim to front
             other_axes = [d for d in range(weight_mat.dim()) if d != self.dim]
-            weight_mat = weight_mat.permute(self.dim, other_axes)
+            weight_mat = weight_mat.permute(self.dim, *other_axes)
 
         height = weight_mat.size(0)
         weight_mat = weight_mat.reshape(height, -1)
@@ -63,6 +62,7 @@ class SpectralNorm(object):
         Args:
             module (nn.Module): containing module
         """
+
         weight = getattr(module, self.name)
         delattr(module, self.name)
         delattr(module, self.name + '_u')
@@ -75,6 +75,7 @@ class SpectralNorm(object):
         Args:
             module (nn.Module): containing module
         """
+
         if module.training:
             weight, u = self.compute_weight(module)
             setattr(module, self.name, weight)
@@ -98,6 +99,7 @@ class SpectralNorm(object):
                 the default is 0, except for modules that are instances of
                 ConvTranspose1/2/3d, when it is 1
         """
+
         fn = SpectralNorm(name, n_power_iterations, dim, eps)
         weight = module._parameters[name]
         height = weight.size(dim)
@@ -119,13 +121,12 @@ class SpectralNorm(object):
         module.register_forward_pre_hook(fn)
         return fn
 
-
 def spectral_norm(module,
                   name='weight',
                   n_power_iterations=1,
                   eps=1e-12,
                   dim=None):
-    """Apply spectral normalization to a parameter in the given module.
+    """Applies spectral normalization to a parameter in the given module.
 
     Description:
         Spectral normalization stabilizes the training of discriminators
@@ -156,8 +157,8 @@ def spectral_norm(module,
         Linear (20 -> 40)
         >>> m.weight_u.size()
         torch.Size([20])
-
     """
+
     if dim is None:
         dim = 0
         if isinstance(module, (torch.nn.ConvTranspose1d,
@@ -168,9 +169,8 @@ def spectral_norm(module,
     SpectralNorm.apply(module, name, n_power_iterations, dim, eps)
     return module
 
-
 def remove_spectral_norm(module, name='weight'):
-    """Remove the spectral normalization reparameterization from a module.
+    """Removes the spectral normalization reparameterization from a module.
 
     Args:
         module (nn.Module): containing module
