@@ -10,3 +10,4 @@ dataset
 TrainingTest.ipynb
 test_spectral.py
 images
+*.un~
