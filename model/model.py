@@ -130,14 +130,13 @@ class G_EncLastBlock(nn.Module):
     """Generator encoder's last block class."""
 
     def __init__(self, in_channels, out_channels, num_channels,
-                 num_attrs, nonlinearity, instancenorm=True):
+                 nonlinearity, instancenorm=True):
         """constructor.
 
         Args:
             in_channels (int): The number of input channels.
             out_channels (int): The number of output channels.
             num_channels (int): The number of input image channels.
-            num_attrs (int): The number of attributes.
             nonlinearity: nonlinearity function
             instancenorm (bool): Whether use instance normalization or not,
                                  Default is True.
@@ -173,43 +172,6 @@ class G_EncLastBlock(nn.Module):
         h = self.conv1(x)
         x = self.conv2(h)
         return x, h
-
-
-class AttrConcatBlock(nn.Module):
-    """Attribute Concatenation block class."""
-
-    def __init__(self, in_channels, out_channels, nonlinearity):
-        """constructor.
-
-        Args:
-            in_channels (int): The number of input channels.
-            out_channels (int): The number of output channels.
-            nonlinearity: nonlinearity function.
-        """
-        super(AttrConcatBlock, self).__init__()
-        self.conv1 = PGConv2d(in_channels, out_channels, nonlinearity,
-                              kernel_size=1, pad=0, instancenorm=False)
-
-    def forward(self, x, attr=None):
-        """forward.
-
-        Args:
-            x (tensor): [batch_size, in_channels, height, width],
-                        input tensor.
-            attr (tensor): [batch_size, num_attrs], Defaults to None.
-
-        Returns:
-            x (tensor): [batch_size, out_channels, height'', width''],
-                        output tensor.
-
-        """
-        if attr is not None:
-            assert len(attr.shape) == 2, \
-                    f"len of attr should be 2 not {len(attr.shape)}"
-            attr = attr.unsqueeze(-1).unsqueeze(-1)
-            x = torch.cat([x, attr], dim=1)
-        x = self.conv1(x)
-        return x
 
 
 class G_EncBlock(nn.Module):
@@ -367,9 +329,7 @@ class Generator(nn.Module):
                  fmap_min=4,
                  fmap_max=512,
                  latent_size=512,
-                 num_attrs=4,
                  use_mask=True,
-                 use_attrs=True,
                  leaky_relu=True,
                  instancenorm=True):
         """constructor.
@@ -380,9 +340,7 @@ class Generator(nn.Module):
             fmap_min (int): Decide the number of network parameter.
             fmap_max (int): Decide the number of network parameter.
             latent_size (int): Latent vector dimension size.
-            num_attrs (int): Dimension of attributes vector.
             use_mask (bool): Whether use mask or not.
-            use_attrs (bool): Whether use attributes or not.
             leaky_relu (bool): Use leaky_relu(True) or ReLU(False)
             instancenorm (bool): Whether use Instancenorm or not.
 
@@ -391,12 +349,6 @@ class Generator(nn.Module):
         resolution = dataset_shape[-1]
         num_channels = dataset_shape[1]
         self.use_mask = use_mask
-        self.use_attrs = use_attrs
-
-        if use_attrs:
-            self.num_attrs = num_attrs
-        else:
-            self.num_attrs = 0
 
         if self.use_mask:
             adjusted_channels = num_channels+1
@@ -420,14 +372,10 @@ class Generator(nn.Module):
                                nonlinearity, instancenorm=instancenorm)
                                for i in reversed(range(1, R-1))])
         self.encblock0 = G_EncLastBlock(latent_size, latent_size,
-                                        adjusted_channels, self.num_attrs,
-                                        nonlinearity)
+                                        adjusted_channels, nonlinearity)
         self.encblocks.append(self.encblock0)
         self.encblocks = nn.ModuleList(self.encblocks)
 
-        self.attrConcatblock = AttrConcatBlock(latent_size+self.num_attrs,
-                                               latent_size,
-                                               nonlinearity)
         # decoder blocks
         self.decblocks = []
         self.decblock0 = G_DecFirstBlock(latent_size, latent_size,
@@ -438,13 +386,12 @@ class Generator(nn.Module):
                               for i in range(1, R-1)])
         self.decblocks = nn.ModuleList(self.decblocks)
 
-    def forward(self, x, attr=None, mask=None, cur_level=None):
+    def forward(self, x, mask=None, cur_level=None):
         """forward.
 
         Args:
             x (tensor): [batch_size, num_channels, height, width],
                         Input image batch.
-            attr (tensor): [batch_size, num_attrs], Defaults to None.
             mask (tensor): [batch_size, num_channels, height, width], Defaults
                            to None.
             cur_level (int): The level of current training status.
@@ -454,12 +401,6 @@ class Generator(nn.Module):
                         Generated image batch.
 
         """
-        if self.use_attrs:
-            assert attr.shape[1] == self.num_attrs, \
-                   f'attr dimension be {self.num_attrs} not {attr.shape[1]}'
-        else:
-            assert attr is None, "attr should not be input"
-
         if cur_level is None:
             cur_level = len(self.encblocks)
 
@@ -492,9 +433,6 @@ class Generator(nn.Module):
         else:
             h, h_prime = self.encblocks[-max_level](x, True)
             hs.append(h_prime)
-
-        # attr concat
-        h = self.attrConcatblock(h, attr)
 
         # decoder
         if max_level > 1:
@@ -620,8 +558,6 @@ class Discriminator(nn.Module):
                  fmap_min=4,
                  fmap_max=512,
                  latent_size=512,
-                 num_attrs=4,
-                 use_attrs=True,
                  leaky_relu=True,
                  instancenorm=True):
         """constructor.
@@ -632,8 +568,6 @@ class Discriminator(nn.Module):
             fmap_min (int): Decide the number of network parameter.
             fmap_max (int): Decide the number of network parameter.
             latent_size (int): Latent vector dimension size.
-            num_attrs (int): Dimension of attributes vector.
-            use_attrs (bool): Whether use attributes or not.
             leaky_relu (bool): Use leaky_relu(True) or ReLU(False)
             instancenorm (bool): Whether use Instancenorm or not.
         """
@@ -642,7 +576,6 @@ class Discriminator(nn.Module):
         resolution = dataset_shape[-1]
         num_channels = dataset_shape[1]
         R = int(np.log2(resolution))
-        self.use_attrs = use_attrs
 
         nonlinearity = nn.LeakyReLU(0.2) if leaky_relu else nn.ReLU()
 
@@ -658,9 +591,6 @@ class Discriminator(nn.Module):
         self.dblocks = nn.ModuleList(self.dblocks)
         self.dense1 = Dense(latent_size)
 
-        if self.use_attrs:
-            self.dense2 = Dense(latent_size, num_attrs)
-
     def forward(self, x, cur_level=None):
         """forward.
 
@@ -672,8 +602,6 @@ class Discriminator(nn.Module):
         Returns:
             cls (tensor): [batch_size, num_classes],
                           Predicted prob of each class.
-            attrs (tensor): [batch_size, num_attrs],
-                            Predicted prob of each attribute.
 
         """
         if cur_level is None:
@@ -700,7 +628,4 @@ class Discriminator(nn.Module):
         h = h.squeeze(-1).squeeze(-1)
 
         cls = self.dense1(h)
-        if self.use_attrs:
-            attr = self.dense2(h)
-            return cls, attr
         return cls

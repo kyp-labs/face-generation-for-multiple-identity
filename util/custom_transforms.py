@@ -41,7 +41,7 @@ class ScaleNRotate(object):
         sc = (self.scales[1] - self.scales[0]) * random.random() - \
              (self.scales[1] - self.scales[0]) / 2 + 1
 
-        for elem in ['image', 'mask', 'masked_image']:
+        for elem in ['image', 'mask']:
             image = sample[elem]
 
             h, w = image.shape[:2]
@@ -64,50 +64,6 @@ class ScaleNRotate(object):
         return f'ScaleNRotate:(rot={str(self.rots)},scale={str(self.scales)})'
 
 
-class CenterSquareMask(object):
-    """Add Square mask to the sample."""
-
-    def __init__(self, center=True):
-        """constructor.
-
-        Args:
-            center (bool): Whether mask location center or not.
-        """
-        self.center = center
-
-    def __call__(self, sample):
-        """caller.
-
-        Args:
-            sample (dict): {str: array} formatted data for training.
-
-        Returns:
-            sample (dict): {str: array} formatted data for training.
-
-        """
-        image = sample['image']
-        if self.center:
-            resolution = image.shape[-2]
-            white_mask = np.zeros([resolution, resolution])
-
-            start_pos = resolution // 4
-            end_pos = resolution * 3 // 4
-
-            assert len(image.shape) == 3, \
-                f'image dims should be 3, not {len(image.shape)}'
-
-            white_mask[start_pos: end_pos, start_pos: end_pos] = 1
-            black_masked_image = sample['image'].copy()
-            black_masked_image[start_pos: end_pos, start_pos: end_pos] = -1
-
-            sample['mask'] = white_mask
-            sample['masked_image'] = black_masked_image
-        return sample
-
-    def __str__(self):  # noqa: D105
-        return f'CenterSquareMask:(center={str(self.center)})'
-
-
 class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
 
@@ -121,13 +77,7 @@ class ToTensor(object):
             sample (dict): {str: array} formatted data for training.
 
         """
-        for elem in ['image', 'masked_image', 'mask', 'attr']:
-            if elem == 'attr':
-                tmp = sample[elem]
-                sample[elem] = torch.from_numpy(tmp).float()
-
-                return sample
-
+        for elem in ['image', 'mask']:
             tmp = sample[elem]
 
             if tmp.ndim == 2:
