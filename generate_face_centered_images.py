@@ -27,7 +27,7 @@ parser = argparse.ArgumentParser(
 add_arg = parser.add_argument
 add_arg('--identity-info', type=str, default=IDENTITY_INFO_PATH,
         help='Path of identity_info.csv')
-add_arg('--resolution', type=int, default=512,
+add_arg('--resolution', type=int, default=256,
         help='Target resolution (default: 256)')
 add_arg('--scale', type=int, default=4,
         help='Scale by super-resolution (default: 4)')
@@ -49,6 +49,25 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
     def rot90(v):
         return np.array([-v[1], v[0]])
 
+    def resize_landmarks(landmarks, quad):
+        size = ((quad[3][0] + quad[2][0]) - (quad[0][0] + quad[1][0])) / 2
+        return landmarks * args.resolution / size
+
+    def rotate_landmarks(landmarks, quad):
+        hypot_vec = quad[1] - quad[0]
+        bottom_vec = np.array([0., hypot_vec[1]])
+        height_vec = hypot_vec - bottom_vec
+        sin = np.hypot(*height_vec) / np.hypot(*hypot_vec)
+        cos = np.hypot(*bottom_vec) / np.hypot(*hypot_vec)
+
+        # Rotate clockwise
+        if height_vec[0] > 0:
+            sin *= -1.
+
+        rotation_matrix = np.matrix([[cos, -sin], [sin, cos]])
+
+        return landmarks.dot(rotation_matrix)
+
     def process_func(idx):
         # load original image
         img_name = loose_landmarks[0][idx]
@@ -56,13 +75,15 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
 
         left_eye = loose_landmarks.T[idx][1:].values[0:2].astype('float32') * scale
         right_eye = loose_landmarks.T[idx][1:].values[2:4].astype('float32') * scale
+        nose = loose_landmarks.T[idx][1:].values[4:6].astype('float32') * scale
         left_mouth = loose_landmarks.T[idx][1:].values[6:8].astype('float32') * scale
         right_mouth = loose_landmarks.T[idx][1:].values[8:].astype('float32') * scale
+        landmarks = np.stack([left_eye, right_eye, nose, left_mouth, right_mouth])
         try:
             img = PIL.Image.open(img_dir+'/'+class_id+'-'+img_name+'.png')
         except FileNotFoundError:
             print(img_dir+'/'+class_id+'-'+img_name+'.png does not exist')
-            return
+            return -1
         print('processing ', img_name, '...')
 
         # Choose oriented crop rectangle.
@@ -85,6 +106,7 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
                     int(np.round(float(img.size[1]) / shrink)))
             img = img.resize(size, PIL.Image.ANTIALIAS)
             quad /= shrink
+            landmarks /= shrink
             zoom *= shrink
 
         # Crop.
@@ -98,6 +120,7 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
         if crop[2] - crop[0] < img.size[0] or crop[3] - crop[1] < img.size[1]:
             img = img.crop(crop)
             quad -= crop[0:2]
+            landmarks -= crop[0:2]
 
         # Simulate super-resolution.
         superres = int(np.exp2(np.ceil(np.log2(zoom))))
@@ -105,6 +128,7 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
             img = img.resize((img.size[0] * superres, img.size[1] * superres),
                              PIL.Image.ANTIALIAS)
             quad *= superres
+            landmarks *= superres
             zoom /= superres
 
         # Pad.
@@ -132,25 +156,40 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
             img = PIL.Image.fromarray(np.uint8(np.clip(np.round(img), 0, 255)),
                                       'RGB')
             quad += pad[0:2]
+            landmarks += pad[0:2]
 
         # Transform.
+        quad += 0.5
         img = img.transform((args.resolution*4, args.resolution*4),
                             PIL.Image.QUAD,
-                            (quad + 0.5).flatten(), PIL.Image.BILINEAR)
+                            quad.flatten(), PIL.Image.BILINEAR)
         img = img.resize((args.resolution, args.resolution),
                          PIL.Image.ANTIALIAS)
+
+
+        landmarks -= quad[0]
+        landmarks = rotate_landmarks(landmarks, quad)
+        landmarks = resize_landmarks(landmarks, quad)
+
         # img = np.asarray(img).transpose(2, 0, 1)
+
+        # Save new landmarks
+        print(img_name, landmarks)
+        for i in range(5):
+            loose_landmarks.T[idx][1:].values[i*2:i*2+2] = landmarks[i]
 
         return (img, img_name)
 
     with ThreadPool(args.num_threads) as pool:
-        for img, img_name in pool.process_items_concurrently(
+        for ret in pool.process_items_concurrently(
                                                 range(start_idx, end_idx+1),
                                                 process_func=process_func,
                                                 max_items_in_flight=num_tasks):
-            filename = outdir + '/' + img_name + '.png'
-            img.save(filename, 'PNG')
-            print('saved ', img_name, '...')
+            if ret != -1:
+                img, img_name = ret
+                filename = outdir + '/' + img_name + '.png'
+                img.save(filename, 'PNG')
+                print('saved ', img_name, '...')
 
 
 if __name__ == '__main__':
@@ -191,3 +230,9 @@ if __name__ == '__main__':
         generate_face_centered_images(loose_landmarks, IMAGES_PATH, out_dir,
                                       args.num_threads, args.num_tasks, args.scale,
                                       start_idx, end_idx)
+
+    print('saving landmarks.csv...')
+    loose_landmarks_train.to_csv(OUTPUT_PATH + '/' + 'loose_landmarks_train_'
+                                         + str(args.resolution) + '.csv')
+    loose_landmarks_test.to_csv(OUTPUT_PATH + '/' + 'loose_landmarks_test_'
+                                        + str(args.resolution) + '.csv')
