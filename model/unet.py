@@ -155,8 +155,8 @@ class Up(nn.Module):
         x1 = upsample(x1, 2)
         diffX = x1.size()[2] - x2.size()[2]
         diffY = x1.size()[3] - x2.size()[3]
-        x2 = F.pad(x2, (diffX // 2, int(diffX / 2),
-                        diffY // 2, int(diffY / 2)))
+        x2 = F.pad(x2, (diffY // 2, int(diffY / 2),
+                        diffX // 2, int(diffX / 2)))
         x = torch.cat([x2, x1], dim=1)
         x = self.conv1(x)
         x = self.conv2(x)
