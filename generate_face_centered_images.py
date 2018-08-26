@@ -33,8 +33,8 @@ add_arg('--output-path', type=str, default=OUTPUT_PATH,
         help='Output image path')
 add_arg('--resolution', type=int, default=256,
         help='Target resolution (default: 256)')
-add_arg('--scale', type=int, default=4,
-        help='Scale by super-resolution (default: 4)')
+add_arg('--scale', type=int, default=3,
+        help='Scale by super-resolution (default: 3)')
 add_arg('--num-threads', type=int, default=4,
         help='Number of concurrent threads (default: 4)')
 add_arg('--num-tasks', type=int, default=100,
@@ -178,7 +178,6 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
         # img = np.asarray(img).transpose(2, 0, 1)
 
         # Save new landmarks
-        print(img_name, landmarks)
         for i in range(5):
             loose_landmarks.T[idx][1:].values[i*2:i*2+2] = landmarks[i]
 
