@@ -27,6 +27,10 @@ parser = argparse.ArgumentParser(
 add_arg = parser.add_argument
 add_arg('--identity-info', type=str, default=IDENTITY_INFO_PATH,
         help='Path of identity_info.csv')
+add_arg('--image-path', type=str, default=IMAGES_PATH,
+        help='Source image path')
+add_arg('--output-path', type=str, default=OUTPUT_PATH,
+        help='Output image path')
 add_arg('--resolution', type=int, default=256,
         help='Target resolution (default: 256)')
 add_arg('--scale', type=int, default=4,
@@ -193,7 +197,7 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
 
 
 if __name__ == '__main__':
-    assert(os.path.isdir(IMAGES_PATH))
+    assert(os.path.isdir(args.image_path))
     assert(os.path.exists(args.identity_info))
     identity_info = pd.read_csv(args.identity_info)
 
@@ -207,17 +211,17 @@ if __name__ == '__main__':
                                         header=None,
                                         low_memory=False)
 
-    if not os.path.exists(OUTPUT_PATH):
-        os.mkdir(OUTPUT_PATH)
-    if not os.path.exists(OUTPUT_PATH+'/'+str(args.resolution)):
-        os.mkdir(OUTPUT_PATH+'/'+str(args.resolution))
+    if not os.path.exists(args.output_path):
+        os.mkdir(args.output_path)
+    if not os.path.exists(args.output_path+'/'+str(args.resolution)):
+        os.mkdir(args.output_path+'/'+str(args.resolution))
 
     for i in range(len(identity_info['Class_ID'])):
         class_id = identity_info['Class_ID'][i]
         name = identity_info['Name'][i]
         print('processing identity: ', class_id, name, '...')
 
-        out_dir = OUTPUT_PATH + '/' + str(args.resolution) + '/' + class_id
+        out_dir = args.output_path + '/' + str(args.resolution) + '/' + class_id
         if not os.path.exists(out_dir):
             os.mkdir(out_dir)
 
@@ -227,12 +231,12 @@ if __name__ == '__main__':
 
         loose_landmarks = loose_landmarks_train if is_train else loose_landmarks_test
 
-        generate_face_centered_images(loose_landmarks, IMAGES_PATH, out_dir,
+        generate_face_centered_images(loose_landmarks, args.image_path, out_dir,
                                       args.num_threads, args.num_tasks, args.scale,
                                       start_idx, end_idx)
 
     print('saving landmarks.csv...')
-    loose_landmarks_train.to_csv(OUTPUT_PATH + '/' + 'loose_landmarks_train_'
+    loose_landmarks_train.to_csv(args.output_path + '/' + 'loose_landmarks_train_'
                                          + str(args.resolution) + '.csv')
-    loose_landmarks_test.to_csv(OUTPUT_PATH + '/' + 'loose_landmarks_test_'
+    loose_landmarks_test.to_csv(args.output_path + '/' + 'loose_landmarks_test_'
                                         + str(args.resolution) + '.csv')
