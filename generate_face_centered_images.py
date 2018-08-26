@@ -77,18 +77,22 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
         img_name = loose_landmarks[0][idx]
         class_id, img_name = img_name.split('/')
 
-        left_eye = loose_landmarks.T[idx][1:].values[0:2].astype('float32') * scale
-        right_eye = loose_landmarks.T[idx][1:].values[2:4].astype('float32') * scale
-        nose = loose_landmarks.T[idx][1:].values[4:6].astype('float32') * scale
-        left_mouth = loose_landmarks.T[idx][1:].values[6:8].astype('float32') * scale
-        right_mouth = loose_landmarks.T[idx][1:].values[8:].astype('float32') * scale
-        landmarks = np.stack([left_eye, right_eye, nose, left_mouth, right_mouth])
         try:
             img = PIL.Image.open(img_dir+'/'+class_id+'-'+img_name+'.png')
         except FileNotFoundError:
             print(img_dir+'/'+class_id+'-'+img_name+'.png does not exist')
             return -1
         print('processing ', img_name, '...')
+
+        if img.size[0] + img.size[1] >= 1024:
+            scale = 1
+
+        left_eye = loose_landmarks.T[idx][1:].values[0:2].astype('float32') * scale
+        right_eye = loose_landmarks.T[idx][1:].values[2:4].astype('float32') * scale
+        nose = loose_landmarks.T[idx][1:].values[4:6].astype('float32') * scale
+        left_mouth = loose_landmarks.T[idx][1:].values[6:8].astype('float32') * scale
+        right_mouth = loose_landmarks.T[idx][1:].values[8:].astype('float32') * scale
+        landmarks = np.stack([left_eye, right_eye, nose, left_mouth, right_mouth])
 
         # Choose oriented crop rectangle.
         eye_avg = (left_eye + right_eye) * 0.5 + 0.5
