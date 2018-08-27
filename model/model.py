@@ -629,12 +629,16 @@ class Discriminator(nn.Module):
         if cur_level is None:
             cur_level = len(self.dblocks)
 
+        hs = []
         max_level = ceil(cur_level)
         alpha = int(cur_level+1) - cur_level
 
-        h = self.dblocks[-(max_level)](x, True)
         if max_level > 1:
+            h = self.dblocks[-max_level](x, True)
+#            if max_level > self.level_add_layer:
+            hs.append(h)
             h = downsample(h, 2)
+
             if alpha < 1.0:
                 x_down = downsample(x, 2)
                 skip_connection = self.dblocks[-max_level+1].fromRGB(x_down)
@@ -645,9 +649,168 @@ class Discriminator(nn.Module):
                 h = self.dblocks[-level](h)
             else:
                 h = self.dblocks[-level](h)
+                hs.append(h)
                 h = downsample(h, 2)
 
         h = h.squeeze(-1).squeeze(-1)
 
         cls = self.dense(h)
-        return cls
+        return cls, hs
+
+
+class PixelClassifier(nn.Module):
+    """U-Net model class.
+
+    Based on "U-Net: Convolutional Networks for Biomedical Image Segmentation"
+    <https://arxiv.org/abs/1505.04597.pdf>
+    """
+
+    def __init__(self,
+                 dataset_shape,
+                 fmap_base=2048,
+                 fmap_min=4,
+                 fmap_max=512,
+                 latent_size=512,
+                 num_classes=5):
+        """constructor.
+
+        Args:
+            num_channels (int): The number of input image channels.
+            num_classes (int): The number of output classes.
+        """
+        super(PixelClassifier, self).__init__()
+
+        resolution = dataset_shape[-1]
+        R = int(np.log2(resolution))
+        assert resolution == 2 ** R and resolution >= 4
+
+        def nf(stage):
+            return min(int(fmap_base / (2.0 ** stage)), fmap_max)
+
+        self.blocks = []
+        self.blocks.extend([Up(nf(i-1), nf(i)) for i in range(1, R-1)])
+        self.blocks = nn.ModuleList(self.blocks)
+        self.outconv = Out(nf(R), num_classes)
+
+    def forward(self, x, hs):
+        """forward.
+
+        Args:
+            x (tensor): [batch_size, num_channels, height, width]
+
+        Returns:
+            x (tensor): [batch_size, num_classes]
+
+        """
+        for i in reversed(range(len(self.blocks))):
+            x = self.blocks[i](x, hs[i])
+        x = self.outconv(x)
+        return x
+
+
+class Up(nn.Module):
+    """U-net's upsampling network class."""
+
+    def __init__(self, in_channels, out_channels):
+        """constructor.
+
+        Args:
+            in_channels (int): The number of input channels.
+            out_channels (int): The number of output channels.
+        """
+        super(Up, self).__init__()
+
+        #  would be a nice idea if the upsampling could be learned too,
+        #  but my machine do not have enough memory to handle all those weights
+        self.conv1 = UConv2d(in_channels, out_channels, nn.ReLU())
+        self.conv2 = UConv2d(out_channels, out_channels, nn.ReLU())
+
+    def forward(self, x1, x2):
+        """forward.
+
+        Args:
+            x1 (tensor): [batch_size, in_channels, height, width]
+            x2 (tensor): [batch_size, in_channels, height, width]
+
+        Returns:
+            x (tensor): [batch_size, out_channels, 2*height, 2*width]
+
+        """
+        x1 = upsample(x1, 2)
+        diffX = x1.size()[2] - x2.size()[2]
+        diffY = x1.size()[3] - x2.size()[3]
+        x2 = F.pad(x2, (diffY // 2, int(diffY / 2),
+                        diffX // 2, int(diffX / 2)))
+        x = torch.cat([x2, x1], dim=1)
+        x = self.conv1(x)
+        x = self.conv2(x)
+        return x
+
+
+class Out(nn.Module):
+    """U-net's last network class."""
+
+    def __init__(self, in_channels, num_classes):
+        """constructor.
+
+        Args:
+            in_channels (int): The number of input channels.
+            num_classes (int): The number of output classes.
+        """
+        super(Out, self).__init__()
+        self.conv = nn.Conv2d(in_channels, num_classes, 1)
+
+    def forward(self, x):
+        """forward.
+
+        Args:
+            x (tensor): [batch_size, in_channels, height, width]
+
+        Returns:
+            x (tensor): [batch_size, num_classes]
+
+        """
+        x = self.conv(x)
+        return x
+
+
+class UConv2d(nn.Module):
+    """Simple Convolutional Network class for U-Net."""
+
+    def __init__(self, in_channels, out_channels, nonlinearity,
+                 kernel_size=3, padding=1):
+        """constructor.
+
+        Args:
+            in_channels (int): The number of input channels.
+            out_channels (int): The number of output channels.
+            nonlinearity: nonlinearity function
+            kernel_size (int): Filter kernel size, Default is 3.
+            padding: padding size, Default is 1.
+        """
+        super(UConv2d, self).__init__()
+
+        self.conv = nn.Conv2d(in_channels, out_channels,
+                              kernel_size=kernel_size,
+                              padding=padding)
+        kaiming_normal_(self.conv.weight)
+        self.nonlinearity = nonlinearity
+        self.out_channels = out_channels
+
+    def forward(self, x):
+        """forward.
+
+        Args:
+            x (tensor): [batch_size, in_channels, height, width],
+                        input tensor.
+
+        Returns:
+            x (tensor): [batch_size, out_channels, height', width'],
+                        output tensor.
+
+        """
+        x = self.conv(x)
+        if self.nonlinearity is not None:
+            x = self.nonlinearity(x)
+        x = nn.BatchNorm2d(self.out_channels)(x)
+        return x
