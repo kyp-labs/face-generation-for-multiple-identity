@@ -10,15 +10,14 @@ import cv2
 class ResizedImageSaver(object):
     """Resized image saver."""
 
-    def __init__(self, data_dir, modify_filename=True,
-                 resolutions_to=(16, 32), img_format='jpg',
+    def __init__(self, data_dir,
+                 resolutions_to=(16, 32),
+                 img_format='jpg',
                  person_name=None):
         """constructor.
 
         Args:
             data_dir (str): Directory path containing dataset.
-            modify_filename (str): Change filename according to
-                                   person's name or not.
             resolutions_to (list): Output image resolutions list.
             img_format (str): 'jpg' or 'png'
             person_name (str): Specific name want to use for filename,
@@ -29,30 +28,25 @@ class ResizedImageSaver(object):
         self.images = [cv2.imread(i) for i in self.file_list]
         self.img_format = img_format
 
-        if person_name is None:
-            self.person_name = os.path.basename(data_dir)
-
         if img_format is None:
             self.img_format = self.file_list[0].split('.')[-1]
 
         assert isinstance(resolutions_to, list), \
             "resolutions_to should be list"
+
+        if person_name is None:
+            self.file_names = [os.path.basename(i) for i in self.file_list]
+        else:
+            self.file_names = [person_name for _ in range(self.num_images)]
+
         for res in resolutions_to:
             self.images_resized = self.resize_image(res)
-
-            if modify_filename:
-                self.file_names = self.modify_filename()
-
             self.save_dir = os.path.join(data_dir, str(res))
+
             if not os.path.exists(self.save_dir):
                 os.makedirs(self.save_dir)
-            self.save_images()
 
-    def modify_filename(self):
-        """Filename modifier."""
-        image_names = [f'{self.person_name}_{i}.{self.img_format}'
-                       for i in range(self.num_images)]
-        return image_names
+            self.save_images()
 
     def resize_image(self, resolutions_to):
         """Image resize to target resolution.
@@ -75,10 +69,11 @@ class ResizedImageSaver(object):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", default="../test_data/aeron_judge",
+    parser.add_argument("--data_dir",
+                        default="../dataset/VGGFACE2/train/n000810/",
                         help="Directory containing images", type=str)
     parser.add_argument("--resolutions_to",
-                        default=[4, 8, 16, 32, 64, 128, 256, 512],
+                        default=[4, 8, 16, 32, 64, 128, 256],
                         help="resolutions want to resize", type=list)
     args = parser.parse_args()
 

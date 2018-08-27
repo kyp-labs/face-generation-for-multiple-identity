@@ -26,7 +26,7 @@ class UConv2d(nn.Module):
     """Simple Convolutional Network class for U-Net."""
 
     def __init__(self, in_channels, out_channels, nonlinearity,
-                 kernel_size=3, pad=1):
+                 kernel_size=3, padding=1):
         """constructor.
 
         Args:
@@ -34,12 +34,13 @@ class UConv2d(nn.Module):
             out_channels (int): The number of output channels.
             nonlinearity: nonlinearity function
             kernel_size (int): Filter kernel size, Default is 3.
-            pad: pad size, Default is 1.
+            padding: padding size, Default is 1.
         """
         super(UConv2d, self).__init__()
 
         self.conv = nn.Conv2d(in_channels, out_channels,
-                              kernel_size, pad)
+                              kernel_size=kernel_size,
+                              padding=padding)
         kaiming_normal_(self.conv.weight)
         self.nonlinearity = nonlinearity
         self.out_channels = out_channels
@@ -105,7 +106,7 @@ class Down(nn.Module):
         super(Down, self).__init__()
         self.maxpool = nn.MaxPool2d(2)
         self.conv1 = UConv2d(in_channels, out_channels, nn.ReLU())
-        self.conv2 = UConv2d(in_channels, out_channels, nn.ReLU())
+        self.conv2 = UConv2d(out_channels, out_channels, nn.ReLU())
 
     def forward(self, x):
         """forward.
@@ -119,7 +120,6 @@ class Down(nn.Module):
         """
         x = self.maxpool(x)
         x = self.conv1(x)
-        x = self.maxpool(x)
         x = self.conv2(x)
         return x
 
@@ -139,7 +139,7 @@ class Up(nn.Module):
         #  would be a nice idea if the upsampling could be learned too,
         #  but my machine do not have enough memory to handle all those weights
         self.conv1 = UConv2d(in_channels, out_channels, nn.ReLU())
-        self.conv2 = UConv2d(in_channels, out_channels, nn.ReLU())
+        self.conv2 = UConv2d(out_channels, out_channels, nn.ReLU())
 
     def forward(self, x1, x2):
         """forward.
@@ -155,8 +155,8 @@ class Up(nn.Module):
         x1 = upsample(x1, 2)
         diffX = x1.size()[2] - x2.size()[2]
         diffY = x1.size()[3] - x2.size()[3]
-        x2 = F.pad(x2, (diffX // 2, int(diffX / 2),
-                        diffY // 2, int(diffY / 2)))
+        x2 = F.pad(x2, (diffY // 2, int(diffY / 2),
+                        diffX // 2, int(diffX / 2)))
         x = torch.cat([x2, x1], dim=1)
         x = self.conv1(x)
         x = self.conv2(x)

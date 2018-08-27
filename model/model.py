@@ -12,6 +12,7 @@ import torch
 from torch.nn.init import kaiming_normal_
 import torch.nn as nn
 from torch.nn import functional as F
+from util.spectral_norm import spectral_norm
 
 """
 TODO
@@ -45,7 +46,8 @@ def upsample(x, factor):
 class Dense(nn.Module):
     """Simple Fully Connected Network class."""
 
-    def __init__(self, in_channels, num_classes=1, nonlinearity=None):
+    def __init__(self, in_channels, num_classes=1,
+                 nonlinearity=None, spectralnorm=True):
         """constructor.
 
         Args:
@@ -55,6 +57,8 @@ class Dense(nn.Module):
         """
         super(Dense, self).__init__()
         self.linear = nn.Linear(in_channels, num_classes)
+        if spectralnorm:
+            self.linear = spectral_norm(self.linear)
         self.nonlinearity = nonlinearity
         if num_classes > 1:
             self.softmax = nn.Softmax(1)
@@ -84,7 +88,8 @@ class PGConv2d(nn.Module):
     """Simple Convolutional Network class for Progressive GAN."""
 
     def __init__(self, in_channels, out_channels, nonlinearity,
-                 kernel_size=3, stride=1, pad=1, instancenorm=True):
+                 kernel_size=3, stride=1, pad=1, instancenorm=True,
+                 spectralnorm=False):
         """constructor.
 
         Args:
@@ -96,11 +101,15 @@ class PGConv2d(nn.Module):
             pad: pad size, Default is 1.
             instancenorm (bool): Whether use instance normalization or not,
                                  Default is True.
+            spectralnorm (bool): Whether use spectral normalization or not,
+                                 Default is False.
         """
         super(PGConv2d, self).__init__()
 
         self.conv = nn.Conv2d(in_channels, out_channels,
                               kernel_size, stride, pad)
+        if spectralnorm:
+            self.conv = spectral_norm(self.conv)
         kaiming_normal_(self.conv.weight)
         self.instancenorm = instancenorm
         self.nonlinearity = nonlinearity
@@ -130,14 +139,13 @@ class G_EncLastBlock(nn.Module):
     """Generator encoder's last block class."""
 
     def __init__(self, in_channels, out_channels, num_channels,
-                 num_attrs, nonlinearity, instancenorm=True):
+                 nonlinearity, instancenorm=True):
         """constructor.
 
         Args:
             in_channels (int): The number of input channels.
             out_channels (int): The number of output channels.
             num_channels (int): The number of input image channels.
-            num_attrs (int): The number of attributes.
             nonlinearity: nonlinearity function
             instancenorm (bool): Whether use instance normalization or not,
                                  Default is True.
@@ -175,48 +183,11 @@ class G_EncLastBlock(nn.Module):
         return x, h
 
 
-class AttrConcatBlock(nn.Module):
-    """Attribute Concatenation block class."""
-
-    def __init__(self, in_channels, out_channels, nonlinearity):
-        """constructor.
-
-        Args:
-            in_channels (int): The number of input channels.
-            out_channels (int): The number of output channels.
-            nonlinearity: nonlinearity function.
-        """
-        super(AttrConcatBlock, self).__init__()
-        self.conv1 = PGConv2d(in_channels, out_channels, nonlinearity,
-                              kernel_size=1, pad=0, instancenorm=False)
-
-    def forward(self, x, attr=None):
-        """forward.
-
-        Args:
-            x (tensor): [batch_size, in_channels, height, width],
-                        input tensor.
-            attr (tensor): [batch_size, num_attrs], Defaults to None.
-
-        Returns:
-            x (tensor): [batch_size, out_channels, height'', width''],
-                        output tensor.
-
-        """
-        if attr is not None:
-            assert len(attr.shape) == 2, \
-                    f"len of attr should be 2 not {len(attr.shape)}"
-            attr = attr.unsqueeze(-1).unsqueeze(-1)
-            x = torch.cat([x, attr], dim=1)
-        x = self.conv1(x)
-        return x
-
-
 class G_EncBlock(nn.Module):
     """Generator encoder's normal block class."""
 
-    def __init__(self, in_channels, out_channels, num_channels, nonlinearity,
-                 instancenorm=True):
+    def __init__(self, in_channels, out_channels, num_channels,
+                 nonlinearity, instancenorm=True):
         """constructor.
 
         Args:
@@ -258,8 +229,8 @@ class G_EncBlock(nn.Module):
 class G_DecFirstBlock(nn.Module):
     """Generator decoder's first block class."""
 
-    def __init__(self, in_channels, out_channels, num_channels, nonlinearity,
-                 instancenorm=True):
+    def __init__(self, in_channels, out_channels, num_channels,
+                 nonlinearity, instancenorm=True):
         """constructor.
 
         Args:
@@ -367,9 +338,7 @@ class Generator(nn.Module):
                  fmap_min=4,
                  fmap_max=512,
                  latent_size=512,
-                 num_attrs=4,
                  use_mask=True,
-                 use_attrs=True,
                  leaky_relu=True,
                  instancenorm=True):
         """constructor.
@@ -380,9 +349,7 @@ class Generator(nn.Module):
             fmap_min (int): Decide the number of network parameter.
             fmap_max (int): Decide the number of network parameter.
             latent_size (int): Latent vector dimension size.
-            num_attrs (int): Dimension of attributes vector.
             use_mask (bool): Whether use mask or not.
-            use_attrs (bool): Whether use attributes or not.
             leaky_relu (bool): Use leaky_relu(True) or ReLU(False)
             instancenorm (bool): Whether use Instancenorm or not.
 
@@ -391,12 +358,6 @@ class Generator(nn.Module):
         resolution = dataset_shape[-1]
         num_channels = dataset_shape[1]
         self.use_mask = use_mask
-        self.use_attrs = use_attrs
-
-        if use_attrs:
-            self.num_attrs = num_attrs
-        else:
-            self.num_attrs = 0
 
         if self.use_mask:
             adjusted_channels = num_channels+1
@@ -420,14 +381,10 @@ class Generator(nn.Module):
                                nonlinearity, instancenorm=instancenorm)
                                for i in reversed(range(1, R-1))])
         self.encblock0 = G_EncLastBlock(latent_size, latent_size,
-                                        adjusted_channels, self.num_attrs,
-                                        nonlinearity)
+                                        adjusted_channels, nonlinearity)
         self.encblocks.append(self.encblock0)
         self.encblocks = nn.ModuleList(self.encblocks)
 
-        self.attrConcatblock = AttrConcatBlock(latent_size+self.num_attrs,
-                                               latent_size,
-                                               nonlinearity)
         # decoder blocks
         self.decblocks = []
         self.decblock0 = G_DecFirstBlock(latent_size, latent_size,
@@ -438,13 +395,12 @@ class Generator(nn.Module):
                               for i in range(1, R-1)])
         self.decblocks = nn.ModuleList(self.decblocks)
 
-    def forward(self, x, attr=None, mask=None, cur_level=None):
+    def forward(self, x, mask=None, cur_level=None):
         """forward.
 
         Args:
             x (tensor): [batch_size, num_channels, height, width],
                         Input image batch.
-            attr (tensor): [batch_size, num_attrs], Defaults to None.
             mask (tensor): [batch_size, num_channels, height, width], Defaults
                            to None.
             cur_level (int): The level of current training status.
@@ -454,12 +410,6 @@ class Generator(nn.Module):
                         Generated image batch.
 
         """
-        if self.use_attrs:
-            assert attr.shape[1] == self.num_attrs, \
-                   f'attr dimension be {self.num_attrs} not {attr.shape[1]}'
-        else:
-            assert attr is None, "attr should not be input"
-
         if cur_level is None:
             cur_level = len(self.encblocks)
 
@@ -493,9 +443,6 @@ class Generator(nn.Module):
             h, h_prime = self.encblocks[-max_level](x, True)
             hs.append(h_prime)
 
-        # attr concat
-        h = self.attrConcatblock(h, attr)
-
         # decoder
         if max_level > 1:
             for level in range(0, max_level-1, 1):
@@ -522,7 +469,7 @@ class D_Block(nn.Module):
     """Discriminator block class."""
 
     def __init__(self, in_channels, out_channels, num_channels, nonlinearity,
-                 instancenorm=True):
+                 instancenorm=True, spectralnorm=True):
         """constructor.
 
         Args:
@@ -532,14 +479,19 @@ class D_Block(nn.Module):
             nonlinearity: nonlinearity function
             instancenorm (bool): Whether use instance normalization or not,
                                  Default is True.
+            spectralnorm (bool): Whether use spectral normalization or not,
+                                 Default is True.
         """
         super(D_Block, self).__init__()
         self.fromRGB = PGConv2d(num_channels, in_channels, nonlinearity,
-                                kernel_size=1, pad=0, instancenorm=False)
+                                kernel_size=1, pad=0, instancenorm=False,
+                                spectralnorm=spectralnorm)
         self.conv1 = PGConv2d(in_channels, in_channels,
-                              nonlinearity, instancenorm=instancenorm)
+                              nonlinearity, instancenorm=instancenorm,
+                              spectralnorm=spectralnorm)
         self.conv2 = PGConv2d(in_channels, out_channels,
-                              nonlinearity, instancenorm=instancenorm)
+                              nonlinearity, instancenorm=instancenorm,
+                              spectralnorm=spectralnorm)
 
     def forward(self, x, first=False):
         """forward.
@@ -565,7 +517,7 @@ class D_LastBlock(nn.Module):
     """Discriminator's last block class."""
 
     def __init__(self, in_channels, out_channels, num_channels,
-                 nonlinearity, instancenorm=True):
+                 nonlinearity, instancenorm=True, spectralnorm=True):
         """constructor.
 
         Args:
@@ -575,15 +527,20 @@ class D_LastBlock(nn.Module):
             nonlinearity: nonlinearity function
             instancenorm (bool): Whether use instance normalization or not,
                                  Default is True.
+            spectralnorm (bool): Whether use spectral normalization or not,
+                                 Default is True.
         """
         super(D_LastBlock, self).__init__()
-        self.fromRGB = PGConv2d(num_channels, in_channels, nonlinearity,
-                                kernel_size=1, pad=0)
+        self.fromRGB = PGConv2d(num_channels, in_channels,
+                                nonlinearity, kernel_size=1, pad=0,
+                                spectralnorm=spectralnorm)
         self.conv1 = PGConv2d(in_channels, out_channels,
-                              nonlinearity, instancenorm=False)
+                              nonlinearity, instancenorm=False,
+                              spectralnorm=spectralnorm)
         self.conv2 = PGConv2d(in_channels, in_channels,
                               nonlinearity, kernel_size=4, stride=1,
-                              pad=0, instancenorm=False)
+                              pad=0, instancenorm=False,
+                              spectralnorm=spectralnorm)
 
     def forward(self, x, first=False):
         """forward.
@@ -620,10 +577,9 @@ class Discriminator(nn.Module):
                  fmap_min=4,
                  fmap_max=512,
                  latent_size=512,
-                 num_attrs=4,
-                 use_attrs=True,
                  leaky_relu=True,
-                 instancenorm=True):
+                 instancenorm=True,
+                 spectralnorm=True):
         """constructor.
 
         Args:
@@ -632,17 +588,15 @@ class Discriminator(nn.Module):
             fmap_min (int): Decide the number of network parameter.
             fmap_max (int): Decide the number of network parameter.
             latent_size (int): Latent vector dimension size.
-            num_attrs (int): Dimension of attributes vector.
-            use_attrs (bool): Whether use attributes or not.
             leaky_relu (bool): Use leaky_relu(True) or ReLU(False)
-            instancenorm (bool): Whether use Instancenorm or not.
+            instancenorm (bool): Whether use instancenorm or not.
+            spectralnorm (bool): Whether use spectralnorm or not.
         """
         super(Discriminator, self).__init__()
 
         resolution = dataset_shape[-1]
         num_channels = dataset_shape[1]
         R = int(np.log2(resolution))
-        self.use_attrs = use_attrs
 
         nonlinearity = nn.LeakyReLU(0.2) if leaky_relu else nn.ReLU()
 
@@ -651,15 +605,13 @@ class Discriminator(nn.Module):
 
         self.dblocks = []
         self.dblocks.extend([D_Block(nf(i), nf(i-1), num_channels,
-                            nonlinearity, instancenorm=instancenorm) for i in
+                             nonlinearity, instancenorm, spectralnorm) for i in
                              reversed(range(1, R-1))])
-        self.dblocks.append(D_LastBlock(latent_size, latent_size, num_channels,
-                                        nonlinearity, instancenorm))
+        self.dblocks.append(D_LastBlock(latent_size, latent_size,
+                                        num_channels, nonlinearity,
+                                        instancenorm, spectralnorm))
         self.dblocks = nn.ModuleList(self.dblocks)
-        self.dense1 = Dense(latent_size)
-
-        if self.use_attrs:
-            self.dense2 = Dense(latent_size, num_attrs)
+        self.dense = Dense(latent_size, spectralnorm=spectralnorm)
 
     def forward(self, x, cur_level=None):
         """forward.
@@ -672,19 +624,21 @@ class Discriminator(nn.Module):
         Returns:
             cls (tensor): [batch_size, num_classes],
                           Predicted prob of each class.
-            attrs (tensor): [batch_size, num_attrs],
-                            Predicted prob of each attribute.
 
         """
         if cur_level is None:
             cur_level = len(self.dblocks)
 
+        hs = []
         max_level = ceil(cur_level)
         alpha = int(cur_level+1) - cur_level
 
-        h = self.dblocks[-(max_level)](x, True)
         if max_level > 1:
+            h = self.dblocks[-max_level](x, True)
+#            if max_level > self.level_add_layer:
+            hs.append(h)
             h = downsample(h, 2)
+
             if alpha < 1.0:
                 x_down = downsample(x, 2)
                 skip_connection = self.dblocks[-max_level+1].fromRGB(x_down)
@@ -695,12 +649,168 @@ class Discriminator(nn.Module):
                 h = self.dblocks[-level](h)
             else:
                 h = self.dblocks[-level](h)
+                hs.append(h)
                 h = downsample(h, 2)
 
         h = h.squeeze(-1).squeeze(-1)
 
-        cls = self.dense1(h)
-        if self.use_attrs:
-            attr = self.dense2(h)
-            return cls, attr
-        return cls
+        cls = self.dense(h)
+        return cls, hs
+
+
+class PixelClassifier(nn.Module):
+    """U-Net model class.
+
+    Based on "U-Net: Convolutional Networks for Biomedical Image Segmentation"
+    <https://arxiv.org/abs/1505.04597.pdf>
+    """
+
+    def __init__(self,
+                 dataset_shape,
+                 fmap_base=2048,
+                 fmap_min=4,
+                 fmap_max=512,
+                 latent_size=512,
+                 num_classes=5):
+        """constructor.
+
+        Args:
+            num_channels (int): The number of input image channels.
+            num_classes (int): The number of output classes.
+        """
+        super(PixelClassifier, self).__init__()
+
+        resolution = dataset_shape[-1]
+        R = int(np.log2(resolution))
+        assert resolution == 2 ** R and resolution >= 4
+
+        def nf(stage):
+            return min(int(fmap_base / (2.0 ** stage)), fmap_max)
+
+        self.blocks = []
+        self.blocks.extend([Up(nf(i-1), nf(i)) for i in range(1, R-1)])
+        self.blocks = nn.ModuleList(self.blocks)
+        self.outconv = Out(nf(R), num_classes)
+
+    def forward(self, x, hs):
+        """forward.
+
+        Args:
+            x (tensor): [batch_size, num_channels, height, width]
+
+        Returns:
+            x (tensor): [batch_size, num_classes]
+
+        """
+        for i in reversed(range(len(self.blocks))):
+            x = self.blocks[i](x, hs[i])
+        x = self.outconv(x)
+        return x
+
+
+class Up(nn.Module):
+    """U-net's upsampling network class."""
+
+    def __init__(self, in_channels, out_channels):
+        """constructor.
+
+        Args:
+            in_channels (int): The number of input channels.
+            out_channels (int): The number of output channels.
+        """
+        super(Up, self).__init__()
+
+        #  would be a nice idea if the upsampling could be learned too,
+        #  but my machine do not have enough memory to handle all those weights
+        self.conv1 = UConv2d(in_channels, out_channels, nn.ReLU())
+        self.conv2 = UConv2d(out_channels, out_channels, nn.ReLU())
+
+    def forward(self, x1, x2):
+        """forward.
+
+        Args:
+            x1 (tensor): [batch_size, in_channels, height, width]
+            x2 (tensor): [batch_size, in_channels, height, width]
+
+        Returns:
+            x (tensor): [batch_size, out_channels, 2*height, 2*width]
+
+        """
+        x1 = upsample(x1, 2)
+        diffX = x1.size()[2] - x2.size()[2]
+        diffY = x1.size()[3] - x2.size()[3]
+        x2 = F.pad(x2, (diffY // 2, int(diffY / 2),
+                        diffX // 2, int(diffX / 2)))
+        x = torch.cat([x2, x1], dim=1)
+        x = self.conv1(x)
+        x = self.conv2(x)
+        return x
+
+
+class Out(nn.Module):
+    """U-net's last network class."""
+
+    def __init__(self, in_channels, num_classes):
+        """constructor.
+
+        Args:
+            in_channels (int): The number of input channels.
+            num_classes (int): The number of output classes.
+        """
+        super(Out, self).__init__()
+        self.conv = nn.Conv2d(in_channels, num_classes, 1)
+
+    def forward(self, x):
+        """forward.
+
+        Args:
+            x (tensor): [batch_size, in_channels, height, width]
+
+        Returns:
+            x (tensor): [batch_size, num_classes]
+
+        """
+        x = self.conv(x)
+        return x
+
+
+class UConv2d(nn.Module):
+    """Simple Convolutional Network class for U-Net."""
+
+    def __init__(self, in_channels, out_channels, nonlinearity,
+                 kernel_size=3, padding=1):
+        """constructor.
+
+        Args:
+            in_channels (int): The number of input channels.
+            out_channels (int): The number of output channels.
+            nonlinearity: nonlinearity function
+            kernel_size (int): Filter kernel size, Default is 3.
+            padding: padding size, Default is 1.
+        """
+        super(UConv2d, self).__init__()
+
+        self.conv = nn.Conv2d(in_channels, out_channels,
+                              kernel_size=kernel_size,
+                              padding=padding)
+        kaiming_normal_(self.conv.weight)
+        self.nonlinearity = nonlinearity
+        self.out_channels = out_channels
+
+    def forward(self, x):
+        """forward.
+
+        Args:
+            x (tensor): [batch_size, in_channels, height, width],
+                        input tensor.
+
+        Returns:
+            x (tensor): [batch_size, out_channels, height', width'],
+                        output tensor.
+
+        """
+        x = self.conv(x)
+        if self.nonlinearity is not None:
+            x = self.nonlinearity(x)
+        x = nn.BatchNorm2d(self.out_channels)(x)
+        return x
