@@ -334,10 +334,10 @@ class Generator(nn.Module):
 
     def __init__(self,
                  dataset_shape,
-                 fmap_base=2048,
+                 fmap_base=1024,
                  fmap_min=4,
-                 fmap_max=512,
-                 latent_size=512,
+                 fmap_max=256,
+                 latent_size=256,
                  use_mask=True,
                  leaky_relu=True,
                  instancenorm=True):
@@ -557,8 +557,114 @@ class D_LastBlock(nn.Module):
         """
         if first:
             x = self.fromRGB(x)
+        h = self.conv1(x)
+        x = self.conv2(h)
+        return x, h
+
+
+class D_DecFirstBlock(nn.Module):
+    """Discriminator decoder's first block class."""
+
+    def __init__(self, in_channels, out_channels, num_channels, nonlinearity,
+                 instancenorm=True, spectralnorm=True):
+        """constructor.
+
+        Args:
+            in_channels (int): The number of input channels.
+            out_channels (int): The number of output channels.
+            num_channels (int): The number of input image channels.
+            nonlinearity: nonlinearity function
+            instancenorm (bool): Whether use instance normalization or not,
+                                 Default is True.
+            spectralnorm (bool): Whether use spectral normalization or not,
+                                 Default is True.
+        """
+        super(D_DecFirstBlock, self).__init__()
+        self.conv1 = PGConv2d(in_channels, out_channels,
+                              nonlinearity, kernel_size=4, stride=1,
+                              pad=3, instancenorm=instancenorm,
+                              spectralnorm=True)
+        self.conv2 = PGConv2d(2*out_channels, out_channels,
+                              nonlinearity, kernel_size=1, stride=1,
+                              pad=0, instancenorm=instancenorm,
+                              spectralnorm=True)
+        self.toRGB = PGConv2d(out_channels, num_channels, nonlinearity=None,
+                              kernel_size=1, pad=0, instancenorm=False,
+                              spectralnorm=True)
+
+    def forward(self, x, h, last=False):
+        """forward.
+
+        Args:
+            x (tensor): [batch_size, in_channels, height, width],
+                        input tensor.
+            h (tensor): [batch_size, in_channels, height, width],
+                        tensor skip connected from Generator.
+            last (bool): Whether Decoder's last layer or not.
+
+        Returns:
+            x (tensor): if last: [batch_size, num_channels, height', width'],
+                        else: [batch_size, out_channels, height', width'],
+                        output tensor.
+
+        """
+        x = self.conv1(x)
+        x = torch.cat([x, h], dim=1)
+        x = self.conv2(x)
+        if last:
+            x = self.toRGB(x)
+        return x
+
+
+class D_DecBlock(nn.Module):
+    """Discriminator's decoder block class."""
+
+    def __init__(self, in_channels, out_channels, num_channels, nonlinearity,
+                 instancenorm=True, spectralnorm=True):
+        """constructor.
+
+        Args:
+            in_channels (int): The number of input channels.
+            out_channels (int): The number of output channels.
+            num_channels (int): The number of input image channels.
+            nonlinearity: nonlinearity function
+            instancenorm (bool): Whether use instance normalization or not,
+                                 Default is True.
+            spectralnorm (bool): Whether use spectral normalization or not,
+                                 Default is True.
+        """
+        super(D_DecBlock, self).__init__()
+        self.conv1 = PGConv2d(2*in_channels, out_channels,
+                              nonlinearity, instancenorm=instancenorm)
+        self.conv2 = PGConv2d(out_channels, out_channels,
+                              nonlinearity, kernel_size=1, stride=1,
+                              pad=0, instancenorm=instancenorm,
+                              spectralnorm=spectralnorm)
+        self.toRGB = PGConv2d(out_channels, num_channels, nonlinearity=None,
+                              kernel_size=1, pad=0, instancenorm=False,
+                              spectralnorm=spectralnorm)
+
+    def forward(self, x, h, last=False):
+        """forward.
+
+        Args:
+            x (tensor): [batch_size, in_channels, height, width],
+                        input tensor.
+            h (tensor): [batch_size, in_channels, height, width],
+                        tensor skip connected from Generator.
+            last (bool): Whether Decoder's last layer or not.
+
+        Returns:
+            x (tensor): if last: [batch_size, num_channels, height', width'],
+                        else: [batch_size, out_channels, height', width'],
+                        output tensor.
+
+        """
+        x = torch.cat([x, h], dim=1)
         x = self.conv1(x)
         x = self.conv2(x)
+        if last:
+            x = self.toRGB(x)
         return x
 
 
@@ -573,10 +679,12 @@ class Discriminator(nn.Module):
 
     def __init__(self,
                  dataset_shape,
-                 fmap_base=2048,
+                 num_classes,
+                 num_layers=2,
+                 fmap_base=1024,
                  fmap_min=4,
-                 fmap_max=512,
-                 latent_size=512,
+                 fmap_max=256,
+                 latent_size=256,
                  leaky_relu=True,
                  instancenorm=True,
                  spectralnorm=True):
@@ -596,22 +704,40 @@ class Discriminator(nn.Module):
 
         resolution = dataset_shape[-1]
         num_channels = dataset_shape[1]
-        R = int(np.log2(resolution))
+        self.R = int(np.log2(resolution))
+        self.num_layers = num_layers
 
         nonlinearity = nn.LeakyReLU(0.2) if leaky_relu else nn.ReLU()
 
         def nf(stage):
             return min(int(fmap_base / (2.0 ** stage)), fmap_max)
 
-        self.dblocks = []
-        self.dblocks.extend([D_Block(nf(i), nf(i-1), num_channels,
-                             nonlinearity, instancenorm, spectralnorm) for i in
-                             reversed(range(1, R-1))])
-        self.dblocks.append(D_LastBlock(latent_size, latent_size,
-                                        num_channels, nonlinearity,
-                                        instancenorm, spectralnorm))
-        self.dblocks = nn.ModuleList(self.dblocks)
+        # encoder blocks
+        self.encblocks = []
+        self.encblocks.extend([D_Block(nf(i), nf(i-1), num_channels,
+                               nonlinearity, instancenorm, spectralnorm)
+                               for i in reversed(range(1, self.R-1))])
+        self.encblocks.append(D_LastBlock(latent_size, latent_size,
+                                          num_channels, nonlinearity,
+                                          instancenorm, spectralnorm))
+        self.encblocks = nn.ModuleList(self.encblocks)
+
+        # decoder blocks
+        self.decblocks = []
+        self.decblock0 = D_DecFirstBlock(latent_size, latent_size,
+                                         num_channels, nonlinearity)
+        self.decblocks.append(self.decblock0)
+        self.decblocks.extend([D_DecBlock(nf(i-1), nf(i), num_channels,
+                               nonlinearity, instancenorm, spectralnorm)
+                               for i in range(1, self.R-1)])
+
+        # classifier
         self.dense = Dense(latent_size, spectralnorm=spectralnorm)
+        self.pixel_classifier = [PGConv2d(nf(self.R-i), num_classes,
+                                          nonlinearity=nonlinearity,
+                                          instancenorm=instancenorm,
+                                          spectralnorm=spectralnorm)
+                                 for i in range(2, 2+self.num_layers)]
 
     def forward(self, x, cur_level=None):
         """forward.
@@ -627,27 +753,55 @@ class Discriminator(nn.Module):
 
         """
         if cur_level is None:
-            cur_level = len(self.dblocks)
+            cur_level = len(self.encblocks)
 
         max_level = ceil(cur_level)
         alpha = int(cur_level+1) - cur_level
 
-        h = self.dblocks[-(max_level)](x, True)
+        # encoder
+        hs = []
         if max_level > 1:
+            h = self.encblocks[-(max_level)](x, True)
+            hs.append(h)
             h = downsample(h, 2)
+
             if alpha < 1.0:
                 x_down = downsample(x, 2)
-                skip_connection = self.dblocks[-max_level+1].fromRGB(x_down)
-                h = h*alpha + (1-alpha)*skip_connection
+                skip_connect = self.encblocks[-max_level+1].fromRGB(x_down)
+                h = h*alpha + (1-alpha)*skip_connect
 
-        for level in range(max_level-1, 0, -1):
-            if level == 1:
-                h = self.dblocks[-level](h)
+            for level in range(max_level-1, 0, -1):
+                if level == 1:
+                    h, h_prime = self.encblocks[-level](h)
+                    hs.append(h_prime)
+                else:
+                    h = self.encblocks[-level](h)
+                    hs.append(h)
+                    h = downsample(h, 2)
+        else:
+            h, h_prime = self.encblocks[-max_level](x, True)
+            hs.append(h_prime)
+
+        # classifier
+        cls = self.dense(h.squeeze(-1).squeeze(-1))
+
+        # pixel classifier
+        pix_cls = None
+        if self.R - max_level <= self.num_layers:
+            # decoder
+            if max_level > 1:
+                for level in range(0, max_level-1, 1):
+                    if level == 0:
+                        h = self.decblocks[level](h, hs[-level-1])
+                    else:
+                        h = upsample(h, 2)
+                        h = self.decblocks[level](h, hs[-level-1])
+
+                x = h  # remember for to_RGB
+                h = upsample(h, 2)  # last layer
+                h = self.decblocks[max_level-1](h, hs[-level-2])
+
             else:
-                h = self.dblocks[-level](h)
-                h = downsample(h, 2)
-
-        h = h.squeeze(-1).squeeze(-1)
-
-        cls = self.dense(h)
-        return cls
+                h = self.decblocks[0](h, hs[0])
+            pix_cls = self.pixel_classifier[self.R - max_level-1](h)
+        return cls, pix_cls
