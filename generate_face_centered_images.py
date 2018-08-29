@@ -16,9 +16,12 @@ from thread_pool import ThreadPool
 
 TEST_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_test.csv' # noqa
 TRAIN_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_train.csv' # noqa
+TEST_IMAGES_PATH = './dataset/VGGFACE2/test'
+TRAIN_IMAGES_PATH = './dataset/VGGFACE2/train'
 IDENTITY_INFO_PATH = './identity_info.csv'
 IMAGES_PATH = './dataset/hr_images'
 OUTPUT_PATH = './output'
+SIZE_CHECK_IMAGE_PATH = '/media/lab4all/de27e1a3-1c5e-44b1-b884-b84f6bc55204/hr_output/dcscn_L12_F196to48_Sc3_NIN_A64_PS_R1F32'
 
 # Configure all options
 parser = argparse.ArgumentParser(
@@ -31,6 +34,8 @@ add_arg('--image-path', type=str, default=IMAGES_PATH,
         help='Source image path')
 add_arg('--output-path', type=str, default=OUTPUT_PATH,
         help='Output image path')
+add_arg('--size_check_img_dir', type=str, default=SIZE_CHECK_IMAGE_PATH,
+        help='Image path for size check')
 add_arg('--resolution', type=int, default=256,
         help='Target resolution (default: 256)')
 add_arg('--scale', type=int, default=3,
@@ -47,7 +52,7 @@ args = parser.parse_args()
 
 def generate_face_centered_images(loose_landmarks, img_dir, outdir,
                                   num_threads=4, num_tasks=100, scale=4,
-                                  start_idx=None, end_idx=None):
+                                  size_check_img_dir=None, start_idx=None, end_idx=None):
     assert(num_threads > 0 and num_tasks > 0)
 
     def rot90(v):
@@ -74,8 +79,23 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
 
     def process_func(idx):
         # load original image
-        img_name = loose_landmarks[0][idx]
+        img_name = loose_landmarks[idx:idx+1]['NAME_ID'].values[0]
+
+        try:
+            img_name_for_size_check = img_name.replace('/', '-')
+            img = PIL.Image.open(size_check_img_dir+'/'+img_name_for_size_check+'.png')
+        except FileNotFoundError:
+            print(size_check_img_dir+'/'+img_name_for_size_check+'.png does not exist')
+            return -1
+
+        denominator = 1
+        if img.size[0] + img.size[1] >= 1024:
+            denominator = scale
+
         class_id, img_name = img_name.split('/')
+        if os.path.exists(outdir + '/' + img_name + '.png'):
+            print("File already exists in the target directory")
+            return -1
 
         try:
             img = PIL.Image.open(img_dir+'/'+class_id+'-'+img_name+'.png')
@@ -84,14 +104,11 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
             return -1
         print('processing ', img_name, '...')
 
-        if img.size[0] + img.size[1] >= 1024:
-            scale = 1
-
-        left_eye = loose_landmarks.T[idx][1:].values[0:2].astype('float32') * scale
-        right_eye = loose_landmarks.T[idx][1:].values[2:4].astype('float32') * scale
-        nose = loose_landmarks.T[idx][1:].values[4:6].astype('float32') * scale
-        left_mouth = loose_landmarks.T[idx][1:].values[6:8].astype('float32') * scale
-        right_mouth = loose_landmarks.T[idx][1:].values[8:].astype('float32') * scale
+        left_eye = loose_landmarks[idx:idx+1].values[0][1:3].astype('float32') * scale / denominator
+        right_eye = loose_landmarks[idx:idx+1].values[0][3:5].astype('float32') * scale / denominator
+        nose = loose_landmarks[idx:idx+1].values[0][5:7].astype('float32') * scale / denominator
+        left_mouth = loose_landmarks[idx:idx+1].values[0][7:9].astype('float32') * scale / denominator
+        right_mouth = loose_landmarks[idx:idx+1].values[0][9:11].astype('float32') * scale / denominator
         landmarks = np.stack([left_eye, right_eye, nose, left_mouth, right_mouth])
 
         # Choose oriented crop rectangle.
@@ -182,8 +199,14 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
         # img = np.asarray(img).transpose(2, 0, 1)
 
         # Save new landmarks
-        for i in range(5):
-            loose_landmarks.T[idx][1:].values[i*2:i*2+2] = landmarks[i]
+        print(landmarks)
+        key_values = dict({'P1X': landmarks[0,0], 'P1Y': landmarks[0,1],
+                          'P2X': landmarks[1,0], 'P2Y': landmarks[1,1],
+                          'P3X': landmarks[2,0], 'P3Y': landmarks[2,1],
+                          'P4X': landmarks[3,0], 'P4Y': landmarks[3,1],
+                          'P5X': landmarks[4,0], 'P5Y': landmarks[4,1]})
+        for key, value in key_values.items():
+            loose_landmarks[idx:idx+1][key] = value
 
         return (img, img_name)
 
@@ -198,6 +221,14 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
                 img.save(filename, 'PNG')
                 print('saved ', img_name, '...')
 
+#    for idx in range(start_idx, end_idx+1):
+#        ret = process_func(idx)
+#        if ret != -1:
+#            img, img_name = ret
+#            filename = outdir + '/' + img_name + '.png'
+#            img.save(filename, 'PNG')
+#            print('saved ', img_name, '...')
+
 
 if __name__ == '__main__':
     assert(os.path.isdir(args.image_path))
@@ -207,12 +238,8 @@ if __name__ == '__main__':
     assert(os.path.exists(TEST_LANDMARKS_PATH))
     assert(os.path.exists(TRAIN_LANDMARKS_PATH))
     print('loading landmarks.csv...')
-    loose_landmarks_test = pd.read_csv(TEST_LANDMARKS_PATH,
-                                       header=None,
-                                       low_memory=False)
-    loose_landmarks_train = pd.read_csv(TRAIN_LANDMARKS_PATH,
-                                        header=None,
-                                        low_memory=False)
+    loose_landmarks_test = pd.read_csv(TEST_LANDMARKS_PATH)
+    loose_landmarks_train = pd.read_csv(TRAIN_LANDMARKS_PATH)
 
     if not os.path.exists(args.output_path):
         os.mkdir(args.output_path)
@@ -229,17 +256,18 @@ if __name__ == '__main__':
             os.mkdir(out_dir)
 
         is_train = identity_info['Flag'][i]
-        start_idx = identity_info['Start_Idx'][i] + 1
-        end_idx = start_idx + identity_info['Sample_Num'][i] - 1
+        start_idx = identity_info['Start_Idx'][i]
+        end_idx = start_idx + identity_info['Sample_Num'][i]
 
         loose_landmarks = loose_landmarks_train if is_train else loose_landmarks_test
 
         generate_face_centered_images(loose_landmarks, args.image_path, out_dir,
                                       args.num_threads, args.num_tasks, args.scale,
-                                      start_idx, end_idx)
+                                      args.size_check_img_dir, start_idx, end_idx)
 
-    print('saving landmarks.csv...')
-    loose_landmarks_train.to_csv(args.output_path + '/' + 'loose_landmarks_train_'
-                                         + str(args.resolution) + '.csv')
-    loose_landmarks_test.to_csv(args.output_path + '/' + 'loose_landmarks_test_'
-                                        + str(args.resolution) + '.csv')
+        print('saving landmarks.csv...')
+        csv_path = out_dir + '/loose_landmarks_' + str(args.resolution) + '.csv'
+        if os.path.exists(csv_path):
+            print("CSV File already exists in the target directory")
+        else:
+            loose_landmarks[start_idx:end_idx+1].to_csv(csv_path)
