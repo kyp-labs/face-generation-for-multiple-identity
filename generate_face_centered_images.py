@@ -199,7 +199,6 @@ def generate_face_centered_images(loose_landmarks, img_dir, outdir,
         # img = np.asarray(img).transpose(2, 0, 1)
 
         # Save new landmarks
-        print(landmarks)
         key_values = dict({'P1X': landmarks[0,0], 'P1Y': landmarks[0,1],
                           'P2X': landmarks[1,0], 'P2Y': landmarks[1,1],
                           'P3X': landmarks[2,0], 'P3Y': landmarks[2,1],
