@@ -19,9 +19,9 @@ TRAIN_LANDMARKS_PATH = './dataset/VGGFACE2/bb_landmark/loose_landmark_train.csv'
 TEST_IMAGES_PATH = './dataset/VGGFACE2/test'
 TRAIN_IMAGES_PATH = './dataset/VGGFACE2/train'
 IDENTITY_INFO_PATH = './identity_info.csv'
-IMAGES_PATH = './dataset/hr_images'
-OUTPUT_PATH = './output'
-SIZE_CHECK_IMAGE_PATH = '/media/lab4all/de27e1a3-1c5e-44b1-b884-b84f6bc55204/hr_output/dcscn_L12_F196to48_Sc3_NIN_A64_PS_R1F32'
+IMAGES_PATH = '/media/lab4all/de27e1a3-1c5e-44b1-b884-b84f6bc55204/hr_output/dcscn_L12_F196to48_Sc3_NIN_A64_PS_R1F32'
+OUTPUT_PATH = '/media/lab4all/de27e1a3-1c5e-44b1-b884-b84f6bc55204/face-centered-images'
+SIZE_CHECK_IMAGE_PATH = '/media/lab4all/de27e1a3-1c5e-44b1-b884-b84f6bc55204/deblocked_output'
 
 # Configure all options
 parser = argparse.ArgumentParser(
