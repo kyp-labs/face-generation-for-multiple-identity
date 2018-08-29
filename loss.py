@@ -9,7 +9,7 @@ This module includes following loss related classes.
    - reconstruction loss
    - boundary loss
    - feature loss
-   - attribute loss
+   - pixelwise classcification loss
 
 2. Vgg16FeatureExtractor class :
     has a VGG16 model pretrained ImageNet
@@ -47,13 +47,11 @@ class FaceGenLoss():
         lambda_recon :weight of reconstruction loss
         lambda_feat : weight of feature loss
         lambda_bdy : weight of boundary loss
-        lambda_attr : weight of attribute loss
         g_losses : losses of generator
         d_losses : losses of discriminator
         gan : type of gan {wgan gp, lsgan, gan}
         vgg16 : VGG16 feature extractor
         adver_loss_func : adversarial loss function
-        attr_loss_func : attribute loss function
 
     """
 
@@ -78,7 +76,6 @@ class FaceGenLoss():
         self.lambda_recon = config.loss.lambda_recon
         self.lambda_feat = config.loss.lambda_feat
         self.lambda_bdy = config.loss.lambda_bdy
-        self.lambda_attr = config.loss.lambda_attr
 
         self.g_losses = GeneratorLoss()
         self.d_losses = DiscriminatorLoss()
@@ -110,29 +107,19 @@ class FaceGenLoss():
 
         """
         # adversarial loss function
-        if gan == Gan.wgan_gp:
-            self.adver_loss_func = lambda p, t, w: (-2.0*t+1.0) * torch.mean(p)
+        if gan == Gan.sngan:
+            self.adver_loss_func = lambda p, t: (-2.0*t+1.0) * torch.mean(p)
+        elif gan == Gan.wgan_gp:
+            self.adver_loss_func = lambda p, t: (-2.0*t+1.0) * torch.mean(p)
         elif gan == Gan.lsgan:
-            self.adver_loss_func = lambda p, t, w: torch.mean((p-t)**2)
+            self.adver_loss_func = lambda p, t: torch.mean((p-t)**2)
         elif gan == Gan.gan:  # 1e-8 torch.nn.BCELoss()
-            if self.pytorch_loss_use:
-                self.adver_loss_func = torch.nn.BCELoss()
-            else:
-                self.adver_loss_func = \
-                    lambda p, t, w: -w*(torch.mean(t*torch.log(p+1e-8)) +
-                                        torch.mean((1-t)*torch.log(1-p+1e-8)))
+            self.adver_loss_func = torch.nn.BCELoss()
         else:
             raise ValueError('Invalid/Unsupported GAN: %s.' % gan)
 
-        # attribute loss function
-        if self.pytorch_loss_use:
-            self.attr_loss_func = torch.nn.BCELoss()
-        else:
-            self.attr_loss_func = \
-                lambda p, t: -(torch.mean(t*torch.log(p+1e-8)) +
-                               torch.mean((1-t)*torch.log(1-p+1e-8)))
 
-    def calc_adver_loss(self, prediction, target, w=1.0):
+    def calc_adver_loss(self, prediction, target):
         """Calculate adversarial loss.
 
         Args:
@@ -140,16 +127,16 @@ class FaceGenLoss():
             target: target label {True, False}
             w: weight of adversarial loss
 
-        """
+        """        
         if self.gan == Gan.gan and self.pytorch_loss_use:
-            mini_batch = prediction.shape[0]
+            N = prediction.shape[0]
             if target is True:
-                target = util.tofloat(self.use_cuda, torch.ones(mini_batch))
+                target = util.tofloat(self.use_cuda, torch.ones(N))
             else:
-                target = util.tofloat(self.use_cuda, torch.zeros(mini_batch))
+                target = util.tofloat(self.use_cuda, torch.zeros(N))
             return self.adver_loss_func(prediction, target)
         else:
-            return self.adver_loss_func(prediction, target, w)
+            return self.adver_loss_func(prediction, target)
 
     def calc_gradient_penalty(self, D, cur_level, real, syn):
         """Calc gradient penalty of wgan gp.
@@ -174,17 +161,12 @@ class FaceGenLoss():
         interpolates = util.tofloat(self.use_cuda, interpolates)
         interpolates = autograd.Variable(interpolates, requires_grad=True)
 
-        if config.train.use_attr:
-            # need cur_level
-            cls_interpolates, attr_interpolates = D(interpolates, cur_level)
-        else:
-            # need cur_level
-            cls_interpolates = D(interpolates, cur_level)
+        cls_interpol, pixel_cls_interpol = D(interpolates, cur_level)
 
-        cls_interpolates = cls_interpolates[:1, :]  # temporary code
+        cls_interpol = cls_interpol[:1, :]  # temporary code
         grad_outputs = util.tofloat(self.use_cuda,
-                                    torch.ones(cls_interpolates.size()))
-        gradients = autograd.grad(outputs=cls_interpolates,
+                                    torch.ones(cls_interpol.size()))
+        gradients = autograd.grad(outputs=cls_interpol,
                                   inputs=interpolates,
                                   grad_outputs=grad_outputs,
                                   create_graph=True,
@@ -194,30 +176,6 @@ class FaceGenLoss():
         gradients = gradients.view(gradients.size(0), -1)
         return ((gradients.norm(2, dim=1) - 1.0) ** 2).mean() * self.lambda_GP
 
-    def calc_att_loss(self, attr_real, d_attr_real, attr_obs, d_attr_obs):
-        """Calculate attribute loss.
-
-        Args:
-            attr_real: attribute of real images
-            d_attr_real : classes for attributes of real images
-            attr_obs : attributes of observed images
-            d_attr_obs : classes for attributes of observed images
-
-        """
-        if config.train.use_attr is False:
-            return 0
-
-        # cross entropy loss
-        # N = attr_real.shape[0]
-        if self.pytorch_loss_use:
-            attr_loss_real = self.attr_loss_func(d_attr_real, attr_real)
-            attr_loss_obs = self.attr_loss_func(d_attr_obs, attr_obs)
-        else:
-            attr_loss_real = self.attr_loss_func(d_attr_real, attr_real)
-            attr_loss_obs = self.attr_loss_func(d_attr_obs, attr_obs)
-
-        attr_loss = attr_loss_real + attr_loss_obs
-        return attr_loss
 
     def calc_feat_loss(self, real, syn):
         """Calculate feature loss.
@@ -238,7 +196,6 @@ class FaceGenLoss():
         real_fmap = self.vgg16(real.detach(), Vgg16Layers.relu2_2)
         syn_fmap = self.vgg16(syn.detach(), Vgg16Layers.relu2_2)
 
-        # print(real_fmap)
         feat_loss = real_fmap - syn_fmap
         feat_loss = ((feat_loss.norm(2, dim=1) - 1.0) ** 2).mean()
         return feat_loss
@@ -300,34 +257,27 @@ class FaceGenLoss():
     def calc_G_loss(self,
                     real,
                     obs,
-                    attr_real,
-                    attr_obs,
                     mask,
                     syn,
                     cls_real,
                     cls_syn,
-                    d_attr_real,
-                    d_attr_obs):
+                    pixel_cls_real,
+                    pixel_cls_syn):
         """Calculate Generator loss.
 
         Args:
             real : real images
             obs: observed images
-            attr_real : attributes of real images
-            attr_obs : attributes of observed images
             mask : binary mask
             syn : synthesized images
             cls_real : classes for real images
             cls_syn : classes for synthesized images
-            d_attr_real : classes for attributes of real images
-            d_attr_obs : classes for attributes of observed images
+            pixel_cls_real : pixelwise classes for real images
+            pixel_cls_syn : pixelwise classes for synthesized images
 
         """
-        # cls_real = cls_real[:1, :]  # temporary code
-        # cls_syn = cls_syn[:1, :] # temporary code
-
         # adversarial loss
-        self.g_losses.g_adver_loss = self.calc_adver_loss(cls_syn, True, 1)
+        self.g_losses.g_adver_loss = self.calc_adver_loss(cls_syn, True)
         # reconstruction loss
         self.g_losses.recon_loss = self.calc_recon_loss(real, syn, mask)
         # feature loss
@@ -346,13 +296,11 @@ class FaceGenLoss():
                     cur_level,
                     real,
                     obs,
-                    attr_real,
-                    attr_obs,
                     mask, syn,
                     cls_real,
                     cls_syn,
-                    d_attr_real,
-                    d_attr_obs):
+                    pixel_cls_real,
+                    pixel_cls_syn):
         """Calculate Descriminator loss.
 
         Args:
@@ -360,43 +308,31 @@ class FaceGenLoss():
             cur_level: progress indicator of progressive growing network
             real : real images
             obs: observed images
-            attr_real : attributes of real images
-            attr_obs : attributes of observed images
             mask : binary mask
             syn : synthesized images
             cls_real : classes for real images
             cls_syn : classes for synthesized images
-            d_attr_real : classes for attributes of real images
-            d_attr_obs : classes for attributes of observed images
+            pixel_cls_real : pixelwise classes for real images
+            pixel_cls_syn : pixelwise classes for synthesized images
 
         """
         # adversarial loss
-        self.d_losses.d_adver_loss_real = \
-            self.calc_adver_loss(cls_real, True, 1.0)
-        self.d_losses.d_adver_loss_syn = \
-            self.calc_adver_loss(cls_syn, False, 1.0)
-        self.d_losses.d_adver_loss = self.d_losses.d_adver_loss_real + \
-            self.alpha_adver_loss_syn * self.d_losses.d_adver_loss_syn
+        self.d_losses.d_adver_loss_real = self.calc_adver_loss(cls_real, True)
+        self.d_losses.d_adver_loss_syn = self.calc_adver_loss(cls_syn, False)
+        self.d_losses.gradient_penalty = 0.0
 
-        # attribute loss
-        self.d_losses.att_loss = self.calc_att_loss(attr_real,
-                                                    d_attr_real,
-                                                    attr_obs,
-                                                    d_attr_obs)
         if self.gan == Gan.wgan_gp:
             self.d_losses.gradient_penalty = \
                 self.calc_gradient_penalty(D,
                                            cur_level,
                                            real,
                                            syn)
-        else:
-            self.d_losses.gradient_penalty = 0.0
 
-        self.d_losses.d_loss = self.d_losses.d_adver_loss + \
-            self.lambda_attr*self.d_losses.att_loss + \
+        self.d_losses.d_loss = self.d_losses.d_adver_loss_real + \
+            self.alpha_adver_loss_syn * self.d_losses.d_adver_loss_syn  + \
             self.d_losses.gradient_penalty
-        return self.d_losses
 
+        return self.d_losses
 
 class Vgg16FeatureExtractor(nn.Module):
     """Vgg16FeatureExtractor classes.

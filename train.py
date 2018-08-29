@@ -20,9 +20,10 @@ from torch.utils.data import DataLoader
 import util.custom_transforms as dt
 
 from model.model import Generator, Discriminator
+
 import util.util as util
 from util.util import Phase
-from util.util import Mode
+from util.util import Gan
 from util.replay import ReplayMemory
 from util.snapshot import Snapshot
 from util.util import GeneratorLossHistory
@@ -42,7 +43,6 @@ class FaceGen():
         transition_size : # of real images to show when fading in new layers
         mode : running mode {inpainting , generation}
         use_mask : flag for mask use in the model
-        use_attr : flag for attribute use in the model
         dataset_shape : input data shape
         use_cuda : flag for cuda use
         G : generator
@@ -58,14 +58,12 @@ class FaceGen():
         snapshot : snapshot intermediate images, checkpoints, tensorboard logs
         real : real images
         obs: observed images
-        attr_real : attributes of real images
-        attr_obs : attributes of observed images
         mask : binary mask
         syn : synthesized images
         cls_real : classes for real images
         cls_syn : classes for synthesized images
-        d_attr_real : classes for attributes of real images
-        d_attr_obs : classes for attributes of observed images
+        pix_cls_real : pixelwise classes for real images
+        pix_cls_syn : pixelwise classes for synthesized images
 
     """
 
@@ -97,7 +95,6 @@ class FaceGen():
 
         self.mode = config.train.mode
         self.use_mask = config.train.use_mask
-        self.use_attr = config.train.use_attr
 
         # Data Shape
         dataset_shape = [1, config.dataset.num_channels,
@@ -110,21 +107,21 @@ class FaceGen():
                            fmap_min=config.train.net.min_resolution,
                            fmap_max=config.train.net.max_resolution,
                            latent_size=config.train.net.latent_size,
-                           num_attrs=config.dataset.attibute_size,
-                           use_attrs=self.use_attr,
                            use_mask=self.use_mask,
                            leaky_relu=True,
                            instancenorm=True)
-
+        
+        spectralnorm = True if config.loss.gan == Gan.sngan else False
         self.D = Discriminator(dataset_shape,
+                               num_classes=config.dataset.num_classes,
+                               num_layers=config.train.net.num_layers,
                                fmap_base=config.train.net.fmap_base,
                                fmap_min=config.train.net.min_resolution,
                                fmap_max=config.train.net.max_resolution,
                                latent_size=config.train.net.latent_size,
-                               num_attrs=config.dataset.attibute_size,
-                               use_attrs=self.use_attr,
                                leaky_relu=True,
-                               instancenorm=True)
+                               instancenorm=True,
+                               spectralnorm=spectralnorm)
 
         self.register_on_gpu()
         self.create_optimizer()
@@ -213,7 +210,7 @@ class FaceGen():
                 from_it = self.snapshot._it + 1
                 self.snapshot.is_restored = False
 
-            print("from_it %d, total_it %d" % (from_it, total_it))
+            #print("from_it %d, total_it %d" % (from_it, total_it))
 
             cur_nimg = from_it*batch_size
             cur_it = from_it
@@ -234,7 +231,10 @@ class FaceGen():
             replay_mode = False
 
             while cur_it <= total_it:
-                for _, sample_batched in enumerate(self.training_set):
+                sample_batched = iter(self.training_set).next()
+                while sample_batched :
+                #for _, sample_batched in enumerate(self.training_set):
+
                     if sample_batched['image'].shape[0] < batch_size:
                         break
 
@@ -257,15 +257,9 @@ class FaceGen():
                     # get a next batch - temporary code
                     self.real = sample_batched['image']
                     # It will be deleted
-                    self.attr_real = self.generate_attr_real_temp()
                     self.mask = sample_batched['mask']
-
-                    if self.mode == Mode.inpainting:
-                        self.obs = sample_batched['masked_image']
-                    else:
-                        self.obs = sample_batched['image']
-
-                    self.attr_obs = self.generate_attr_obs(self.attr_real)
+                    self.obs = sample_batched['image']
+                    # target_id = sample_batched['target_id']
 
                     cur_nimg = self.train_step(batch_size,
                                                cur_it,
@@ -277,6 +271,7 @@ class FaceGen():
                     cur_it += 1
                     self.global_it += 1
                     self.global_cur_nimg += 1
+                    sample_batched = iter(self.training_set).next()
 
             # Replay Mode
             if config.replay.enabled:
@@ -286,8 +281,7 @@ class FaceGen():
 
                 for i_batch in range(config.replay.replay_count):
                     cur_it = i_batch+1
-                    self.real, self.attr_real, self.mask,
-                    self.obs, self.attr_obs, self.syn \
+                    self.real, self.mask, self.obs, self.syn \
                         = self.replay_memory.get_batch(cur_resol, batch_size)
                     if self.real is None:
                         break
@@ -344,10 +338,8 @@ class FaceGen():
             if config.replay.enabled and replay_mode is False:
                 self.replay_memory.append(cur_resol,
                                           self.real,
-                                          self.attr_real,
                                           self.mask,
                                           self.obs,
-                                          self.attr_obs,
                                           self.syn.detach())
             d_cnt += 1
 
@@ -388,13 +380,9 @@ class FaceGen():
             cur_level: progress indicator of progressive growing network
 
         """
-        if self.use_attr:
-            self.cls_syn, self.d_attr_obs = self.D(self.syn,
-                                                   cur_level=cur_level)
-        else:
-            self.cls_syn = self.D(self.syn,
-                                  cur_level=cur_level)
-            self.d_attr_obs = 0
+        self.cls_syn, self.pixel_cls_syn  = self.D(self.syn,
+                              cur_level=cur_level)
+        self.pixel_cls_syn = 0
 
     def forward_D(self, cur_level, detach=True, replay_mode=False):
         """Forward discriminator.
@@ -406,43 +394,27 @@ class FaceGen():
 
         """
         if replay_mode is False:
-            if self.use_attr:
-                self.syn = self.G(self.obs,
-                                  attr=self.attr_obs,
-                                  mask=self.mask,
-                                  cur_level=cur_level)
-            else:
-                self.syn = self.G(self.obs,
-                                  attr=None,
-                                  mask=self.mask,
-                                  cur_level=cur_level)
+            self.syn = self.G(self.obs,
+                              mask=self.mask,
+                              cur_level=cur_level)
 
-            # self.syn = util.normalize_min_max(self.syn)
-        if self.use_attr:
-            self.cls_real, self.d_attr_real = self.D(self.real,
-                                                     cur_level=cur_level)
-            self.cls_syn, self.d_attr_obs = self.D(
-                    self.syn.detach() if detach else self.syn,
-                    cur_level=cur_level)
-        else:
-            self.cls_real = self.D(self.real, cur_level=cur_level)
-            self.cls_syn = self.D(self.syn.detach() if detach else self.syn,
-                                  cur_level=cur_level)
-            self.d_attr_real = 0
-            self.d_attr_obs = 0
+        # self.syn = util.normalize_min_max(self.syn)
+        self.cls_real, self.pixel_cls_real = self.D(self.real,
+                                                 cur_level=cur_level)
+        self.cls_syn, self.pixel_cls_syn = self.D(
+                self.syn.detach() if detach else self.syn,
+                cur_level=cur_level)
 
     def backward_G(self):
         """Backward generator."""
         self.loss.calc_G_loss(self.real,
                               self.obs,
-                              self.attr_real,
-                              self.attr_obs,
                               self.mask,
                               self.syn,
                               self.cls_real,
                               self.cls_syn,
-                              self.d_attr_real,
-                              self.d_attr_obs)
+                              self.pixel_cls_real,
+                              self.pixel_cls_syn)
         self.loss.g_losses.g_loss.backward()
         self.optim_G.step()
 
@@ -461,14 +433,12 @@ class FaceGen():
                               cur_level,
                               self.real,
                               self.obs,
-                              self.attr_real,
-                              self.attr_obs,
                               self.mask,
                               self.syn,
                               self.cls_real,
                               self.cls_syn,
-                              self.d_attr_real,
-                              self.d_attr_obs)
+                              self.pixel_cls_real,
+                              self.pixel_cls_syn)
 
         self.loss.d_losses.d_loss.backward(retain_graph=retain_graph)
         self.optim_D.step()
@@ -479,10 +449,8 @@ class FaceGen():
     def preprocess(self):
         """Set input type to cuda or cpu according to gpu availability."""
         self.real = util.tofloat(self.use_cuda, self.real)
-        self.attr_real = util.tofloat(self.use_cuda, self.attr_real)
         self.mask = util.tofloat(self.use_cuda, self.mask)
         self.obs = util.tofloat(self.use_cuda, self.obs)
-        self.attr_obs = util.tofloat(self.use_cuda, self.attr_obs)
 
     def check_gpu(self):
         """Check gpu availability."""
@@ -505,49 +473,22 @@ class FaceGen():
             batch_size: flag for detaching syn image from generator graph
 
         """
+        num_classes = config.dataset.num_classes
         transform_options = transforms.Compose([dt.Normalize(0.5, 0.5),
-                                                dt.CenterSquareMask(),
+                                                dt.TargetMask(num_classes),
                                                 dt.ToTensor()])
         dataset_func = config.dataset.func
         datasets = util.call_func_by_name(data_dir=config.dataset.data_dir,
                                           resolution=resol,
+                                          landmark_info_path= \
+                                          config.dataset.landmark_info_path,
+                                          identity_info_path= \
+                                          config.dataset.identity_info_path,
                                           transform=transform_options,
                                           func=dataset_func)
+        
         # train_dataset & data loader
-        return DataLoader(datasets, batch_size)
-
-    def generate_attr_real_temp(self):
-        """Generate attributes of real images."""
-        # attribute example:[“Male”,“Smiling”] -> [0,0], [1,0], [0,1], [1,1]
-        N, C, H, W = self.real.shape
-        attr_real = torch.rand(N, config.dataset.attibute_size)
-        attr_real[attr_real < 0.5] = 0
-        attr_real[attr_real >= 0.5] = 1
-
-        return attr_real
-
-    def generate_attr_obs(self, attr_real):
-        """Generate attributes of observed images.
-
-            - change randomly chosen one attribute of 50% of real images
-
-        Args:
-            attr_real: attributes of real images
-        """
-        # attribute is a n dimension vector with a value 0/1 for each elements
-        assert len(attr_real.shape) == 2
-
-        N, attr_size = attr_real.shape
-        attr_obs = attr_real.clone()
-
-        batch_index = np.arange(N)
-        batch_index = batch_index[np.random.rand(N) > 0.5]
-        attr_index = np.random.randint(attr_size, size=len(batch_index))
-
-        attr_obs[batch_index, attr_index] \
-            = 1 - attr_real[batch_index, attr_index]
-
-        return attr_obs
+        return DataLoader(datasets, batch_size, True)
 
     def create_optimizer(self):
         """Create optimizers of generator and discriminator."""

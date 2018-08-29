@@ -50,16 +50,14 @@ class ReplayMemory():
         self.max_memory_size = dict.get(self.cur_resol,
                                         config.replay.max_memory_size)
 
-    def append(self, cur_resol, real, attr_real, mask, obs, attr_obs, syn):
+    def append(self, cur_resol, real, mask, obs, syn):
         """Append new data to replay memory.
 
         Args:
             cur_resol: resolution of replay data
             real: real iag
-            attr_real : attributes of real images
             mask : binary mask
             obs: observed images
-            attr_obs : attributes of observed images
             syn:synthesized images
 
         """
@@ -75,10 +73,8 @@ class ReplayMemory():
 
         for i in range(real.shape[0]):
             self.replay_memory.append([real[i],
-                                       attr_real[i],
                                        mask[i],
                                        obs[i],
-                                       attr_obs[i],
                                        syn[i]])
 
     def delete(self, del_len):
@@ -117,10 +113,8 @@ class ReplayMemory():
                     in ran.sample(self.replay_memory, batch_size)]
 
         real = torch.stack([replay_item[0] for replay_item in replay_l])
-        attr_real = torch.stack([replay_item[1] for replay_item in replay_l])
-        mask = torch.stack([replay_item[2] for replay_item in replay_l])
-        obs = torch.stack([replay_item[3] for replay_item in replay_l])
-        attr_obs = torch.stack([replay_item[4] for replay_item in replay_l])
-        syn = torch.stack([replay_item[5] for replay_item in replay_l])
+        mask = torch.stack([replay_item[1] for replay_item in replay_l])
+        obs = torch.stack([replay_item[2] for replay_item in replay_l])
+        syn = torch.stack([replay_item[3] for replay_item in replay_l])
 
-        return real, attr_real, mask, obs, attr_obs, syn
+        return real, mask, obs, syn

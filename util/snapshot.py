@@ -301,10 +301,10 @@ class Snapshot(object):
             cur_level: progress indicator of progressive growing network
 
         """
-        formation = '%d [%dx%d](%d/%d)%.1f %s " + \
-                    "| G:%.3f, D:%.3f " + \
-                    "| G_adv:%.3f, R:%.3f, F:%.3f, B:%.3f " + \
-                    "| D_adv:%.3f(%.3f,%.3f), A:%.3f, GP:%.3f'
+        formation = '%d [%dx%d](%d/%d)%.1f %s ' + \
+                    '| G:%.3f, D:%.3f ' + \
+                    '| G_adv:%.3f, R:%.3f, F:%.3f, B:%.3f ' + \
+                    '| D_adv:%.3f(%.3f,%.3f), GP:%.3f'
         values = (global_it,
                   cur_resol,
                   cur_resol,
@@ -320,7 +320,6 @@ class Snapshot(object):
                   self.d_losses.d_adver_loss,
                   self.d_losses.d_adver_loss_real,
                   self.d_losses.d_adver_loss_syn,
-                  self.d_losses.att_loss,
                   self.d_losses.gradient_penalty)
 
         print(formation % values)
@@ -333,7 +332,7 @@ class Snapshot(object):
 
         """
         n_row = config.snapshot.rows_map[minibatch_size]
-        if n_row >= minibatch_size:
+        if n_row > minibatch_size:
             n_row = minibatch_size // 2
         n_col = int(np.ceil(minibatch_size / float(n_row)))
 
@@ -390,7 +389,6 @@ class Snapshot(object):
                 prefix + 'D_adver_loss': self.d_losses.d_adver_loss,
                 prefix + 'D_adver_loss_syn': self.d_losses.d_adver_loss_syn,
                 prefix + 'D_adver_loss_real': self.d_losses.d_adver_loss_real,
-                prefix + 'att_loss': self.d_losses.att_loss,
                 prefix + 'gradient_penalty': self.d_losses.gradient_penalty}
 
         for tag, value in info.items():

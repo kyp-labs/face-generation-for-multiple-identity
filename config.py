@@ -45,16 +45,20 @@ env = EasyDict()
 env.num_gpus = 1
 
 # DataSet
-dataset = EasyDict(func='util.datasets.CelebADataset',
-                   data_dir='test_data/n000106/',
-                   num_channels=3,
-                   attibute_size=4)
+dataset = EasyDict(func='util.datasets.VGGFace2Dataset',
+                   data_dir='./dataset/VGGFACE2/train',
+                   landmark_info_path=
+                   './dataset/VGGFACE2/bb_landmark/test_loose_landmark.csv',
+                   identity_info_path=
+                   './dataset/VGGFACE2/test_identity_info.csv',
+                   num_classes=3,
+                   num_channels=3)
 
 # Tranining
-test1_train = EasyDict(D_repeats=4,
-                       total_size=16,
-                       train_size=8,
-                       transition_size=8,
+test1_train = EasyDict(D_repeats=1,
+                       total_size=100,
+                       train_size=50,
+                       transition_size=50,
                        dataset_unit=1)
 test2_train = EasyDict(D_repeats=4,
                        total_size=1000,
@@ -66,16 +70,15 @@ test3_train = EasyDict(D_repeats=1,
                        train_size=25000,
                        transition_size=25000,
                        dataset_unit=1)
-train = test3_train
+train = test1_train
 train.net = EasyDict(min_resolution=4,
-                     max_resolution=512,
-                     latent_size=512,
-                     fmap_base=2048,
-                     fmap_decay=1.0)
+                     max_resolution=256,
+                     latent_size=256,
+                     fmap_base=1024,
+                     num_layers = 2)
 
 train.use_mask = True  # {inpainting , generation} mode
-train.use_attr = True  # {inpainting , generation} mode
-train.mode = Mode.inpainting  # {inpainting , generation} mode
+train.mode = Mode.generation  # {inpainting , generation} mode
 if common.test_mode == TestMode.unit_test:
     train.forced_stop = True
 else:
@@ -85,15 +88,20 @@ train.forced_stop_resolution = 4  # {inpainting , generation} mode
 # Training Scheduler
 sched = EasyDict()
 sched.batch_base = 32  # Maximum batch size
-sched.batch_dict = {4: 64,
+sched.batch_dict = {4: 2,
+                    8: 2,
+                    16: 2,
+                    32: 2,
+                    64: 2,
+                    128: 2,
+                    256: 2}  # Resolution-specific overrides
+sched.batch_dict2 = {4: 64,
                     8: 32,
                     16: 16,
                     32: 16,
                     64: 4,
                     128: 4,
-                    256: 2,
-                    512: 1,
-                    1024: 1}  # Resolution-specific overrides
+                    256: 2}  # Resolution-specific overrides
 
 # Replay
 replay = EasyDict()
@@ -106,15 +114,13 @@ replay.max_memory_size_dict = {4: 256,
                                32: 256,
                                64: 128,
                                128: 128,
-                               256: 64,
-                               512: 32,
-                               1024: 16}  # 8 times batch size
+                               256: 64}  # 8 times batch size
 
 # Loss
 loss = EasyDict()
 loss.use_feat_loss = False
 
-loss.gan = Gan.wgan_gp  # type of gan {wgan gp, lsgan, gan}
+loss.gan = Gan.sngan  # type of gan {ga, lsgan, wgan gp, sngan}
 loss.alpha_adver_loss_syn = 1.0  # weight of syn images' loss of D
 loss.alpha_recon = 0.7  # weight for mask area of reconstruction loss (0.7)
 loss.lambda_GP = 10.0  # weight of gradient panelty (ref source = 10)
@@ -122,7 +128,6 @@ loss.lambda_GP = 10.0  # weight of gradient panelty (ref source = 10)
 loss.lambda_recon = 500.0  # weight of reconstruction loss (paper = 500)
 loss.lambda_feat = 10.0  # weight of feature loss (paper = 10)
 loss.lambda_bdy = 5000.0  # weight of boundary loss(paper = 5000)
-loss.lambda_attr = 2.0  # weight of attribute loss (paper = 2)
 loss.mean_filter_size = 7  # mea filter size for calculation of boudnary loss
 
 # Optimizer
@@ -153,16 +158,16 @@ snapshot.sample_freq_dict = {4: 128,
                              16: 512,
                              32: 512,
                              64: 1024,
-                             128: 256,
-                             512: 2048,
-                             1024: 2048}
+                             128: 1024,
+                             256: 1024}
 snapshot.rows_map = {64: 8,
                      32: 8,
                      16: 4,
                      8: 2,
                      4: 2,
-                     2: 1}  # rows per batch size
-snapshot.enable_threading = True
+                     2: 1,
+                     1: 1}  # rows per batch size
+snapshot.enable_threading = False
 snapshot.draw_plot = False
 
 
@@ -172,7 +177,7 @@ checkpoint.restore = True
 checkpoint.restore_dir = ''  # restore from which exp dir
 checkpoint.which_file = ''  # restore from which file
 
-checkpoint.save_freq = 128  # save model frequency
+checkpoint.save_freq = 2  # save model frequency
 checkpoint.save_freq_dict = snapshot.sample_freq_dict
 
 # Loggingalpha_adver
