@@ -256,7 +256,7 @@ if __name__ == '__main__':
 
         is_train = identity_info['Flag'][i]
         start_idx = identity_info['Start_Idx'][i]
-        end_idx = start_idx + identity_info['Sample_Num'][i]
+        end_idx = start_idx + identity_info['Sample_Num'][i] - 1
 
         loose_landmarks = loose_landmarks_train if is_train else loose_landmarks_test
 
