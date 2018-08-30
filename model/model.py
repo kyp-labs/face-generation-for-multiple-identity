@@ -465,8 +465,8 @@ class Generator(nn.Module):
         return h
 
 
-class D_Block(nn.Module):
-    """Discriminator block class."""
+class D_EncBlock(nn.Module):
+    """Discriminator encoder block class."""
 
     def __init__(self, in_channels, out_channels, num_channels, nonlinearity,
                  instancenorm=True, spectralnorm=True):
@@ -482,7 +482,7 @@ class D_Block(nn.Module):
             spectralnorm (bool): Whether use spectral normalization or not,
                                  Default is True.
         """
-        super(D_Block, self).__init__()
+        super(D_EncBlock, self).__init__()
         self.fromRGB = PGConv2d(num_channels, in_channels, nonlinearity,
                                 kernel_size=1, pad=0, instancenorm=False,
                                 spectralnorm=spectralnorm)
@@ -513,8 +513,8 @@ class D_Block(nn.Module):
         return x
 
 
-class D_LastBlock(nn.Module):
-    """Discriminator's last block class."""
+class D_EncLastBlock(nn.Module):
+    """Discriminator encoder's last block class."""
 
     def __init__(self, in_channels, out_channels, num_channels,
                  nonlinearity, instancenorm=True, spectralnorm=True):
@@ -530,7 +530,7 @@ class D_LastBlock(nn.Module):
             spectralnorm (bool): Whether use spectral normalization or not,
                                  Default is True.
         """
-        super(D_LastBlock, self).__init__()
+        super(D_EncLastBlock, self).__init__()
         self.fromRGB = PGConv2d(num_channels, in_channels,
                                 nonlinearity, kernel_size=1, pad=0,
                                 spectralnorm=spectralnorm)
@@ -714,10 +714,10 @@ class Discriminator(nn.Module):
 
         # encoder blocks
         self.encblocks = []
-        self.encblocks.extend([D_Block(nf(i), nf(i-1), num_channels,
+        self.encblocks.extend([D_EncBlock(nf(i), nf(i-1), num_channels,
                                nonlinearity, instancenorm, spectralnorm)
                                for i in reversed(range(1, self.R-1))])
-        self.encblocks.append(D_LastBlock(latent_size, latent_size,
+        self.encblocks.append(D_EncLastBlock(latent_size, latent_size,
                                           num_channels, nonlinearity,
                                           instancenorm, spectralnorm))
         self.encblocks = nn.ModuleList(self.encblocks)
@@ -730,6 +730,7 @@ class Discriminator(nn.Module):
         self.decblocks.extend([D_DecBlock(nf(i-1), nf(i), num_channels,
                                nonlinearity, instancenorm, spectralnorm)
                                for i in range(1, self.R-1)])
+        self.decblocks = nn.ModuleList(self.decblocks)
 
         # classifier
         self.dense = Dense(latent_size, spectralnorm=spectralnorm)
@@ -738,6 +739,7 @@ class Discriminator(nn.Module):
                                           instancenorm=instancenorm,
                                           spectralnorm=spectralnorm)
                                  for i in range(2, 2+self.num_layers)]
+        self.pixel_classifier = nn.ModuleList(self.pixel_classifier)
 
     def forward(self, x, cur_level=None):
         """forward.
