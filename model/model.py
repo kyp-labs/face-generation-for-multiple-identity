@@ -377,22 +377,24 @@ class Generator(nn.Module):
 
         # encoder blocks
         self.encblocks = []
-        self.encblocks.extend([G_EncBlock(nf(i), nf(i-1), adjusted_channels,
-                               nonlinearity, instancenorm=instancenorm)
-                               for i in reversed(range(1, R-1))])
-        self.encblock0 = G_EncLastBlock(latent_size, latent_size,
-                                        adjusted_channels, nonlinearity)
-        self.encblocks.append(self.encblock0)
+        for i in reversed(range(1, R-1)):
+            self.encblocks.append(G_EncBlock(nf(i), nf(i-1),
+                                             adjusted_channels,
+                                             nonlinearity,
+                                             instancenorm=instancenorm))
+        self.encblocks.append(G_EncLastBlock(latent_size, latent_size,
+                                             adjusted_channels, nonlinearity))
         self.encblocks = nn.ModuleList(self.encblocks)
 
         # decoder blocks
         self.decblocks = []
-        self.decblock0 = G_DecFirstBlock(latent_size, latent_size,
-                                         num_channels, nonlinearity)
-        self.decblocks.append(self.decblock0)
-        self.decblocks.extend([G_DecBlock(nf(i-1), nf(i), num_channels,
-                              nonlinearity, instancenorm=instancenorm)
-                              for i in range(1, R-1)])
+        self.decblocks.append(G_DecFirstBlock(latent_size, latent_size,
+                                              num_channels, nonlinearity))
+        for i in range(1, R-1):
+            self.decblocks.append(G_DecBlock(nf(i-1), nf(i),
+                                             num_channels,
+                                             nonlinearity,
+                                             instancenorm=instancenorm))
         self.decblocks = nn.ModuleList(self.decblocks)
 
     def forward(self, x, mask=None, cur_level=None):
@@ -714,31 +716,33 @@ class Discriminator(nn.Module):
 
         # encoder blocks
         self.encblocks = []
-        self.encblocks.extend([D_EncBlock(nf(i), nf(i-1), num_channels,
-                               nonlinearity, instancenorm, spectralnorm)
-                               for i in reversed(range(1, self.R-1))])
+        for i in reversed(range(1, self.R-1)):
+            self.encblocks.append(D_EncBlock(nf(i), nf(i-1), num_channels,
+                                             nonlinearity, instancenorm,
+                                             spectralnorm))
         self.encblocks.append(D_EncLastBlock(latent_size, latent_size,
-                                          num_channels, nonlinearity,
-                                          instancenorm, spectralnorm))
+                                             num_channels, nonlinearity,
+                                             instancenorm, spectralnorm))
         self.encblocks = nn.ModuleList(self.encblocks)
 
         # decoder blocks
         self.decblocks = []
-        self.decblock0 = D_DecFirstBlock(latent_size, latent_size,
-                                         num_channels, nonlinearity)
-        self.decblocks.append(self.decblock0)
-        self.decblocks.extend([D_DecBlock(nf(i-1), nf(i), num_channels,
-                               nonlinearity, instancenorm, spectralnorm)
-                               for i in range(1, self.R-1)])
+        self.decblocks.append(D_DecFirstBlock(latent_size, latent_size,
+                                              num_channels, nonlinearity))
+        for i in range(1, self.R-1):
+            self.decblocks.append(D_DecBlock(nf(i-1), nf(i), num_channels,
+                                             nonlinearity, instancenorm,
+                                             spectralnorm))
         self.decblocks = nn.ModuleList(self.decblocks)
 
         # classifier
         self.dense = Dense(latent_size, spectralnorm=spectralnorm)
-        self.pixel_classifier = [PGConv2d(nf(self.R-i), num_classes,
-                                          nonlinearity=nonlinearity,
-                                          instancenorm=instancenorm,
-                                          spectralnorm=spectralnorm)
-                                 for i in range(2, 2+self.num_layers)]
+        self.pixel_classifier = []
+        for i in range(2, 2+self.num_layers):
+            self.pixel_classifier.append(PGConv2d(nf(self.R-i), num_classes,
+                                                  nonlinearity=nonlinearity,
+                                                  instancenorm=instancenorm,
+                                                  spectralnorm=spectralnorm))
         self.pixel_classifier = nn.ModuleList(self.pixel_classifier)
 
     def forward(self, x, cur_level=None):
