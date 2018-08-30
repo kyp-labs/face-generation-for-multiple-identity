@@ -110,7 +110,7 @@ class FaceGen():
                            use_mask=self.use_mask,
                            leaky_relu=True,
                            instancenorm=True)
-        
+
         spectralnorm = True if config.loss.gan == Gan.sngan else False
         self.D = Discriminator(dataset_shape,
                                num_classes=config.dataset.num_classes,
@@ -210,8 +210,6 @@ class FaceGen():
                 from_it = self.snapshot._it + 1
                 self.snapshot.is_restored = False
 
-            #print("from_it %d, total_it %d" % (from_it, total_it))
-
             cur_nimg = from_it*batch_size
             cur_it = from_it
 
@@ -231,9 +229,7 @@ class FaceGen():
             replay_mode = False
 
             while cur_it <= total_it:
-                sample_batched = iter(self.training_set).next()
-                while sample_batched :
-                #for _, sample_batched in enumerate(self.training_set):
+                for _, sample_batched in enumerate(self.training_set):
 
                     if sample_batched['image'].shape[0] < batch_size:
                         break
@@ -271,7 +267,6 @@ class FaceGen():
                     cur_it += 1
                     self.global_it += 1
                     self.global_cur_nimg += 1
-                    sample_batched = iter(self.training_set).next()
 
             # Replay Mode
             if config.replay.enabled:
@@ -380,8 +375,8 @@ class FaceGen():
             cur_level: progress indicator of progressive growing network
 
         """
-        self.cls_syn, self.pixel_cls_syn  = self.D(self.syn,
-                              cur_level=cur_level)
+        self.cls_syn, self.pixel_cls_syn = self.D(self.syn,
+                                                  cur_level=cur_level)
         self.pixel_cls_syn = 0
 
     def forward_D(self, cur_level, detach=True, replay_mode=False):
@@ -400,7 +395,7 @@ class FaceGen():
 
         # self.syn = util.normalize_min_max(self.syn)
         self.cls_real, self.pixel_cls_real = self.D(self.real,
-                                                 cur_level=cur_level)
+                                                    cur_level=cur_level)
         self.cls_syn, self.pixel_cls_syn = self.D(
                 self.syn.detach() if detach else self.syn,
                 cur_level=cur_level)
@@ -478,15 +473,14 @@ class FaceGen():
                                                 dt.TargetMask(num_classes),
                                                 dt.ToTensor()])
         dataset_func = config.dataset.func
-        datasets = util.call_func_by_name(data_dir=config.dataset.data_dir,
+        ds = config.dataset
+        datasets = util.call_func_by_name(data_dir=ds.data_dir,
                                           resolution=resol,
-                                          landmark_info_path= \
-                                          config.dataset.landmark_info_path,
-                                          identity_info_path= \
-                                          config.dataset.identity_info_path,
+                                          landmark_info_path=ds.landmark_path,
+                                          identity_info_path=ds.identity_path,
                                           transform=transform_options,
                                           func=dataset_func)
-        
+
         # train_dataset & data loader
         return DataLoader(datasets, batch_size, True)
 

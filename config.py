@@ -45,14 +45,14 @@ env = EasyDict()
 env.num_gpus = 1
 
 # DataSet
-dataset = EasyDict(func='util.datasets.VGGFace2Dataset',
-                   data_dir='./dataset/VGGFACE2/train',
-                   landmark_info_path=
-                   './dataset/VGGFACE2/bb_landmark/test_loose_landmark.csv',
-                   identity_info_path=
-                   './dataset/VGGFACE2/test_identity_info.csv',
-                   num_classes=3,
-                   num_channels=3)
+dataset = EasyDict()
+dataset.func = 'util.datasets.VGGFace2Dataset'
+dataset.data_dir = './dataset/VGGFACE2/train'
+dataset.landmark_path = './dataset/VGGFACE2/bb_landmark/' +\
+                        'test_loose_landmark.csv'
+dataset.identity_path = './dataset/VGGFACE2/test_identity_info.csv'
+dataset.num_classes = 3
+dataset.num_channels = 3
 
 # Tranining
 test1_train = EasyDict(D_repeats=1,
@@ -75,7 +75,7 @@ train.net = EasyDict(min_resolution=4,
                      max_resolution=256,
                      latent_size=256,
                      fmap_base=1024,
-                     num_layers = 2)
+                     num_layers=2)
 
 train.use_mask = True  # {inpainting , generation} mode
 train.mode = Mode.generation  # {inpainting , generation} mode
@@ -96,12 +96,12 @@ sched.batch_dict = {4: 2,
                     128: 2,
                     256: 2}  # Resolution-specific overrides
 sched.batch_dict2 = {4: 64,
-                    8: 32,
-                    16: 16,
-                    32: 16,
-                    64: 4,
-                    128: 4,
-                    256: 2}  # Resolution-specific overrides
+                     8: 32,
+                     16: 16,
+                     32: 16,
+                     64: 4,
+                     128: 4,
+                     256: 2}  # Resolution-specific overrides
 
 # Replay
 replay = EasyDict()
