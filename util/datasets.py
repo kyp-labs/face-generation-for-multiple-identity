@@ -127,7 +127,7 @@ class VGGFace2Dataset(Dataset):
 
         Return:
             sample (dict): {str: array} formatted data for training.
-        """        
+        """
         pattern = re.compile('n[0-9]{6}/[0-9]{4}_[0-9]{2}')
         image_path = self.file_list[idx]
         image_path = image_path.replace("\\", "/")

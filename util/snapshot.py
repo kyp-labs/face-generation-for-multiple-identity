@@ -301,10 +301,11 @@ class Snapshot(object):
             cur_level: progress indicator of progressive growing network
 
         """
-        formation = '%d [%dx%d](%d/%d)%.1f %s ' + \
-                    '| G:%.3f, D:%.3f ' + \
-                    '| G_adv:%.3f, R:%.3f, F:%.3f, B:%.3f ' + \
-                    '| D_adv:%.3f(%.3f,%.3f), GP:%.3f'
+        formation = '%d [%dx%d](%d/%d)%.1f %s ' +\
+                    '| G:%.3f, D:%.3f ' +\
+                    '| G_adv:%.3f, R:%.3f, F:%.3f, B:%.3f, P:%.3f, C: %.3f,' +\
+                    '| D_adv:%.3f(%.3f,%.3f), GP:%.3f' +\
+                    '| Pixel:%.3f(%.3f,%.3f)'
         values = (global_it,
                   cur_resol,
                   cur_resol,
@@ -317,10 +318,15 @@ class Snapshot(object):
                   self.g_losses.recon_loss,
                   self.g_losses.feat_loss,
                   self.g_losses.bdy_loss,
+                  self.g_losses.pixel_loss,
+                  self.g_losses.cycle_loss,
                   self.d_losses.d_adver_loss,
                   self.d_losses.d_adver_loss_real,
                   self.d_losses.d_adver_loss_syn,
-                  self.d_losses.gradient_penalty)
+                  self.d_losses.gradient_penalty,
+                  self.d_losses.pixel_loss,
+                  self.d_losses.pixel_loss_real,
+                  self.d_losses.pixel_loss_syn)
 
         print(formation % values)
 

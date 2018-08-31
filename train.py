@@ -250,12 +250,11 @@ class FaceGen():
                         # training
                         cur_level = float(R - min_resol + 1)
 
-                    # get a next batch - temporary code
                     self.real = sample_batched['image']
-                    # It will be deleted
-                    self.mask = sample_batched['mask']
+                    self.real_mask = sample_batched['mask']
                     self.obs = sample_batched['image']
-                    # target_id = sample_batched['target_id']
+                    self.obs_mask = sample_batched['mask']
+                    self.target_id = sample_batched['target_id']
 
                     cur_nimg = self.train_step(batch_size,
                                                cur_it,
@@ -276,7 +275,8 @@ class FaceGen():
 
                 for i_batch in range(config.replay.replay_count):
                     cur_it = i_batch+1
-                    self.real, self.mask, self.obs, self.syn \
+                    self.real, self.real_mask, \
+                        self.obs, self.obs_mask, self.syn \
                         = self.replay_memory.get_batch(cur_resol, batch_size)
                     if self.real is None:
                         break
@@ -333,8 +333,9 @@ class FaceGen():
             if config.replay.enabled and replay_mode is False:
                 self.replay_memory.append(cur_resol,
                                           self.real,
-                                          self.mask,
+                                          self.real_mask,
                                           self.obs,
+                                          self.obs_mask,
                                           self.syn.detach())
             d_cnt += 1
 
@@ -343,7 +344,7 @@ class FaceGen():
             # Training generator
             self.optim_G.zero_grad()
             self.forward_G(cur_level)
-            self.backward_G()
+            self.backward_G(cur_level)
             d_cnt = 0
 
         # model intermediate results
@@ -377,7 +378,6 @@ class FaceGen():
         """
         self.cls_syn, self.pixel_cls_syn = self.D(self.syn,
                                                   cur_level=cur_level)
-        self.pixel_cls_syn = 0
 
     def forward_D(self, cur_level, detach=True, replay_mode=False):
         """Forward discriminator.
@@ -390,7 +390,7 @@ class FaceGen():
         """
         if replay_mode is False:
             self.syn = self.G(self.obs,
-                              mask=self.mask,
+                              mask=self.obs_mask,
                               cur_level=cur_level)
 
         # self.syn = util.normalize_min_max(self.syn)
@@ -400,16 +400,20 @@ class FaceGen():
                 self.syn.detach() if detach else self.syn,
                 cur_level=cur_level)
 
-    def backward_G(self):
+    def backward_G(self, cur_level):
         """Backward generator."""
-        self.loss.calc_G_loss(self.real,
+        self.loss.calc_G_loss(self.G,
+                              cur_level,
+                              self.real,
+                              self.real_mask,
                               self.obs,
-                              self.mask,
+                              self.obs_mask,
                               self.syn,
                               self.cls_real,
                               self.cls_syn,
                               self.pixel_cls_real,
                               self.pixel_cls_syn)
+
         self.loss.g_losses.g_loss.backward()
         self.optim_G.step()
 
@@ -427,8 +431,9 @@ class FaceGen():
         self.loss.calc_D_loss(self.D,
                               cur_level,
                               self.real,
+                              self.real_mask,
                               self.obs,
-                              self.mask,
+                              self.obs_mask,
                               self.syn,
                               self.cls_real,
                               self.cls_syn,
@@ -444,8 +449,9 @@ class FaceGen():
     def preprocess(self):
         """Set input type to cuda or cpu according to gpu availability."""
         self.real = util.tofloat(self.use_cuda, self.real)
-        self.mask = util.tofloat(self.use_cuda, self.mask)
+        self.real_mask = util.tofloat(self.use_cuda, self.real_mask)
         self.obs = util.tofloat(self.use_cuda, self.obs)
+        self.obs_mask = util.tofloat(self.use_cuda, self.obs_mask)
 
     def check_gpu(self):
         """Check gpu availability."""

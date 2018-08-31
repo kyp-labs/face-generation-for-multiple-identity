@@ -75,7 +75,7 @@ train.net = EasyDict(min_resolution=4,
                      max_resolution=256,
                      latent_size=256,
                      fmap_base=1024,
-                     num_layers=2)
+                     num_layers=7)
 
 train.use_mask = True  # {inpainting , generation} mode
 train.mode = Mode.generation  # {inpainting , generation} mode
@@ -128,6 +128,8 @@ loss.lambda_GP = 10.0  # weight of gradient panelty (ref source = 10)
 loss.lambda_recon = 500.0  # weight of reconstruction loss (paper = 500)
 loss.lambda_feat = 10.0  # weight of feature loss (paper = 10)
 loss.lambda_bdy = 5000.0  # weight of boundary loss(paper = 5000)
+loss.lambda_cycle = 500.0  # weight of cycle consistency loss
+loss.lambda_pixel = 1
 loss.mean_filter_size = 7  # mea filter size for calculation of boudnary loss
 
 # Optimizer

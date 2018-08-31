@@ -98,6 +98,7 @@ class GeneratorLoss:
         recon_loss : reconstruction loss
         feat_loss : feature loss
         bdy_loss : boundary loss
+        pixel_loss : pixelwise classification loss
 
     """
 
@@ -108,6 +109,8 @@ class GeneratorLoss:
         self.recon_loss = 0
         self.feat_loss = 0
         self.bdy_loss = 0
+        self.cycle_loss = 0
+        self.pixel_loss = 0
 
 
 class DiscriminatorLoss:
@@ -119,7 +122,9 @@ class DiscriminatorLoss:
         d_adver_loss_syn : adversarial loss of synthesized image (fake)
         d_adver_loss_real : adversarial loss of real image (real)
         gradient_penalty_loss : gradient penalty of WGAN GP
-        d_pixelwise_loss : pixelwise classcification loss
+        pixel_loss : pixelwise classification loss
+        pixel_loss_real : pixelwise classification loss of real image
+        pixel_loss_syn : pixelwise classification loss of synthesized image
 
     """
 
@@ -130,7 +135,9 @@ class DiscriminatorLoss:
         self.d_adver_loss_syn = 0
         self.d_adver_loss_real = 0
         self.gradient_penalty_loss = 0
-        self.d_pixelwise_loss = 0
+        self.pixel_loss = 0
+        self.pixel_loss_real = 0
+        self.pixel_loss_syn = 0
 
 
 class GeneratorLossHistory:
@@ -152,6 +159,7 @@ class GeneratorLossHistory:
         self.recon_loss_hist = []
         self.feat_loss_hist = []
         self.bdy_loss_hist = []
+        self.pixel_loss_hist = []
 
     def append(self, g_losses):
         """Append new loss to history.
@@ -164,6 +172,7 @@ class GeneratorLossHistory:
         self.recon_loss_hist.append(g_losses.recon_loss)
         self.feat_loss_hist.append(g_losses.feat_loss)
         self.bdy_loss_hist.append(g_losses.bdy_loss)
+        self.pixel_loss_hist.append(g_losses.pixel_loss)
 
     def len(self):
         """Length of history."""
@@ -190,7 +199,9 @@ class DiscriminatorLossHistory:
         self.d_adver_loss_syn_hist = []
         self.d_adver_loss_real_hist = []
         self.gradient_penalty_hist = []
-        self.d_pixelwise_loss_hist = []
+        self.pixel_loss_hist = []
+        self.pixel_loss_real_hist = []
+        self.pixel_loss_syn_hist = []
 
     def append(self, d_losses):
         """Append new loss to history.
@@ -204,7 +215,9 @@ class DiscriminatorLossHistory:
         self.d_adver_loss_syn_hist.append(d_losses.d_adver_loss_syn)
         self.d_adver_loss_real_hist.append(d_losses.d_adver_loss_real)
         self.gradient_penalty_hist.append(d_losses.gradient_penalty)
-        self.d_pixelwise_loss_hist.append(d_losses.d_pixelwise_loss)
+        self.pixel_loss_hist.append(d_losses.pixel_loss)
+        self.pixel_loss_real_hist.append(d_losses.pixel_loss_real)
+        self.pixel_loss_syn_hist.append(d_losses.pixel_loss_syn)
 
     def len(self):
         """Length of history."""

@@ -21,7 +21,7 @@ This module includes following loss related classes.
 """
 
 import torch
-
+import torch.nn.functional as F
 from torchvision.models import vgg16
 from torch import autograd
 from torch import nn
@@ -38,18 +38,18 @@ class FaceGenLoss():
     """FaceGenLoss classes.
 
     Attributes:
-        pytorch_loss_use : flag for use of PyTorch loss function
         use_cuda : flag for cuda use
-        gpu : # of gpus
-        alpha_adver_loss_syn : weight of syn images' loss of D
-        alpha_recon : weight for mask area of reconstruction loss
-        lambda_GP : weight of gradient panelty
-        lambda_recon :weight of reconstruction loss
-        lambda_feat : weight of feature loss
-        lambda_bdy : weight of boundary loss
+        gpu (int32) : # of gpus
+        alpha_adver_loss_syn (int32) : weight of syn images' loss of D
+        alpha_recon (int32) : weight for mask area of reconstruction loss
+        lambda_GP (int32) : weight of gradient panelty
+        lambda_recon (int32) :weight of reconstruction loss
+        lambda_feat (int32) : weight of feature loss
+        lambda_bdy (int32) : weight of boundary loss
         g_losses : losses of generator
         d_losses : losses of discriminator
-        gan : type of gan {wgan gp, lsgan, gan}
+        p_losses : losses of pixelwise classifier
+        gan (enum) : type of gan {wgan gp, lsgan, gan}
         vgg16 : VGG16 feature extractor
         adver_loss_func : adversarial loss function
 
@@ -76,6 +76,8 @@ class FaceGenLoss():
         self.lambda_recon = config.loss.lambda_recon
         self.lambda_feat = config.loss.lambda_feat
         self.lambda_bdy = config.loss.lambda_bdy
+        self.lambda_cycle = config.loss.lambda_cycle
+        self.lambda_pixel = config.loss.lambda_pixel
 
         self.g_losses = GeneratorLoss()
         self.d_losses = DiscriminatorLoss()
@@ -118,7 +120,6 @@ class FaceGenLoss():
         else:
             raise ValueError('Invalid/Unsupported GAN: %s.' % gan)
 
-
     def calc_adver_loss(self, prediction, target):
         """Calculate adversarial loss.
 
@@ -127,7 +128,7 @@ class FaceGenLoss():
             target: target label {True, False}
             w: weight of adversarial loss
 
-        """        
+        """
         if self.gan == Gan.gan and self.pytorch_loss_use:
             N = prediction.shape[0]
             if target is True:
@@ -176,7 +177,6 @@ class FaceGenLoss():
         gradients = gradients.view(gradients.size(0), -1)
         return ((gradients.norm(2, dim=1) - 1.0) ** 2).mean() * self.lambda_GP
 
-
     def calc_feat_loss(self, real, syn):
         """Calculate feature loss.
 
@@ -200,38 +200,49 @@ class FaceGenLoss():
         feat_loss = ((feat_loss.norm(2, dim=1) - 1.0) ** 2).mean()
         return feat_loss
 
-    def calc_recon_loss(self, real, syn, mask):
+    def calc_recon_loss(self, real, real_mask, syn, obs_mask):
         """Calculate reconstruction loss.
 
         Args:
-            real : real images
-            syn : synthesized images
-            mask : binary mask
+            real (tensor) : real images
+            real_mask (tensor) : domain masks of real images
+            syn (tensor) : synthesized images
+            obs_mask (tensor) : domain masks of observed images
 
         """
         N, C, H, W = real.shape
-        mask_ext = mask.repeat((1, C, 1, 1))
+
+        # domain area of input image
+        mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
+        mask *= obs_mask
+        mask = mask.repeat((1, C, 1, 1))
 
         # L1 norm
         alpha = self.alpha_recon
-        recon_loss = (alpha * mask_ext * (real - syn)).norm(1) + \
-                     ((1 - alpha) * (1 - mask_ext) * (real - syn)).norm(1)
+        recon_loss = (alpha * mask * (real - syn)).norm(1) + \
+                     ((1 - alpha) * (1 - mask) * (real - syn)).norm(1)
 
         recon_loss = recon_loss/N
 
         return recon_loss
 
-    def calc_bdy_loss(self, real, syn, mask):
+    def calc_bdy_loss(self, real, real_mask, syn, obs_mask):
         """Calculate boundary loss.
 
         Args:
-            real : real images
-            syn : synthesized images
-            mask : binary mask
+            real (tensor) : real images
+            real_mask (tensor) : domain masks of real images
+            syn (tensor) : synthesized images
+            obs_mask (tensor) : domain masks of observed images
 
         """
         # blurring mask boundary
-        N, C, H, W = mask.shape
+        N, C, H, W = obs_mask.shape
+
+        # domain area of input image
+        mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
+        mask *= obs_mask
+        mask = mask.repeat((1, C, 1, 1))
 
         if H < 16:
             return 0
@@ -240,11 +251,8 @@ class FaceGenLoss():
         if self.use_cuda:
             mean_filter.cuda()
 
-        w1 = mean_filter(mask)
-        w1 = w1 * (1 - mask)  # weights of mask range are 0
-        w2 = mean_filter(1-mask)
-        w2 = w2 * (mask)  # weights of non-mask range are 0
-        w = w1 + w2
+        w = mean_filter(mask)
+        w = w * mask  # weights of mask range are 0
         w_ext = w.repeat((1, C, 1, 1))
 
         w_ext = util.tofloat(self.use_cuda, w_ext)
@@ -254,10 +262,34 @@ class FaceGenLoss():
 
         return bdy_loss
 
+    def calc_cycle_loss(self, G, cur_level, real, real_mask, syn):
+        """Calculate cycle consistency loss.
+
+        Args:
+            G: generator
+            cur_level: progress indicator of progressive growing network
+            real (tensor) : real images
+            real_mask (tensor) : domain masks of real images
+            obs_mask (tensor) : domain masks of observed images
+
+        """
+        N, C, H, W = real.shape
+
+        pred_real = G(syn,
+                      mask=real_mask,
+                      cur_level=cur_level)
+
+        # L1 norm
+        cycle_loss = F.l1_loss(pred_real, real, size_average=True)
+        return cycle_loss
+
     def calc_G_loss(self,
+                    G,
+                    cur_level,
                     real,
+                    real_mask,
                     obs,
-                    mask,
+                    obs_mask,
                     syn,
                     cls_real,
                     cls_syn,
@@ -266,37 +298,98 @@ class FaceGenLoss():
         """Calculate Generator loss.
 
         Args:
-            real : real images
-            obs: observed images
-            mask : binary mask
-            syn : synthesized images
-            cls_real : classes for real images
-            cls_syn : classes for synthesized images
-            pixel_cls_real : pixelwise classes for real images
-            pixel_cls_syn : pixelwise classes for synthesized images
+            G : generator
+            cur_level (float32) : progress indicator of
+                                  progressive growing network
+            real (tensor) : real images
+            real_mask (tensor) : domain masks of real images
+            obs (tensor) : observed images
+            obs_mask (tensor) : domain masks of observed images
+            syn (tensor) : synthesized images
+            cls_real (tensor) : classes for real images
+            cls_syn (tensor) : classes for synthesized images
+            pixel_cls_real (tensor) : pixelwise classes for real images
+            pixel_cls_syn (tensor) : pixelwise classes for synthesized images
 
         """
         # adversarial loss
         self.g_losses.g_adver_loss = self.calc_adver_loss(cls_syn, True)
         # reconstruction loss
-        self.g_losses.recon_loss = self.calc_recon_loss(real, syn, mask)
+        self.g_losses.recon_loss = self.calc_recon_loss(real,
+                                                        real_mask,
+                                                        syn,
+                                                        obs_mask)
         # feature loss
         self.g_losses.feat_loss = self.calc_feat_loss(real, syn)
         # boundary loss
-        self.g_losses.bdy_loss = self.calc_bdy_loss(real, syn, mask)
+        self.g_losses.bdy_loss = self.calc_bdy_loss(real,
+                                                    real_mask,
+                                                    syn,
+                                                    obs_mask)
+        # cycle consistency loss
+        self.g_losses.cycle_loss = self.calc_cycle_loss(G,
+                                                        cur_level,
+                                                        real,
+                                                        real_mask,
+                                                        syn)
+
+        # pixelwise classification koss
+        if pixel_cls_syn is None:
+            self.g_losses.pixel_loss = 0
+        else:
+            self.g_losses.pixel_loss = \
+                self.cross_entropy2d(pixel_cls_syn, obs_mask)
 
         self.g_losses.g_loss = self.g_losses.g_adver_loss + \
             self.lambda_recon*self.g_losses.recon_loss + \
             self.lambda_feat*self.g_losses.feat_loss + \
-            self.lambda_bdy*self.g_losses.bdy_loss
+            self.lambda_bdy*self.g_losses.bdy_loss + \
+            self.lambda_cycle*self.g_losses.cycle_loss + \
+            self.lambda_pixel*self.g_losses.pixel_loss
+
         return self.g_losses
+
+    def cross_entropy2d(self,
+                        predict,
+                        target,
+                        weight=None,
+                        size_average=False):
+        """Calculate cross entropy for segmentation class.
+
+        Args:
+            predict (tensor) : [batch_size, num_channels, height, width]
+                                prediction of pixelwise classifier
+            target (tensor) : [batch_size, num_channels, height, width]
+                                target label {class id}
+            weight (tensor) : [# of classes]
+                    weight of pixels
+
+        Return:
+            loss (scalar) : cross entropy loss
+
+        """
+        assert not (predict is None or target is None)
+
+        log_p = F.log_softmax(predict, dim=1)
+
+        N, C, H, W = target.shape
+        target = target.permute(0, 2, 3, 1).view(N, H, W)
+        target = target.type(torch.cuda.LongTensor)
+
+        loss = F.nll_loss(log_p,
+                          target,
+                          weight=weight,
+                          size_average=size_average)
+        return loss
 
     def calc_D_loss(self,
                     D,
                     cur_level,
                     real,
+                    real_mask,
                     obs,
-                    mask, syn,
+                    obs_mask,
+                    syn,
                     cls_real,
                     cls_syn,
                     pixel_cls_real,
@@ -305,15 +398,17 @@ class FaceGenLoss():
 
         Args:
             D: discriminator
-            cur_level: progress indicator of progressive growing network
-            real : real images
-            obs: observed images
-            mask : binary mask
-            syn : synthesized images
-            cls_real : classes for real images
-            cls_syn : classes for synthesized images
-            pixel_cls_real : pixelwise classes for real images
-            pixel_cls_syn : pixelwise classes for synthesized images
+            cur_level (float32) : progress indicator of
+                                  progressive growing network
+            real (tensor) : real images
+            real_mask (tensor) : domain masks of real images
+            obs(tensor) : observed images
+            obs_mask (tensor) : domain masks of observed images
+            syn (tensor) : synthesized images
+            cls_real (tensor) : classes for real images
+            cls_syn (tensor) : classes for synthesized images
+            pixel_cls_real (tensor) : pixelwise classes for real images
+            pixel_cls_syn (tensor) : pixelwise classes for synthesized images
 
         """
         # adversarial loss
@@ -328,11 +423,27 @@ class FaceGenLoss():
                                            real,
                                            syn)
 
+        # pixelwise classification loss
+        if pixel_cls_real is None:
+            self.d_losses.pixel_loss_real = 0
+            self.d_losses.pixel_loss_syn = 0
+            self.d_losses.pixel_loss = 0
+        else:
+            self.d_losses.pixel_loss_real = \
+                self.cross_entropy2d(pixel_cls_real, real_mask)
+            self.d_losses.pixel_loss_syn = \
+                self.cross_entropy2d(pixel_cls_syn, obs_mask)
+
+            self.d_losses.pixel_loss = self.d_losses.pixel_loss_real + \
+                self.d_losses.pixel_loss_syn
+
         self.d_losses.d_loss = self.d_losses.d_adver_loss_real + \
-            self.alpha_adver_loss_syn * self.d_losses.d_adver_loss_syn  + \
-            self.d_losses.gradient_penalty
+            self.alpha_adver_loss_syn * self.d_losses.d_adver_loss_syn + \
+            self.d_losses.gradient_penalty + \
+            self.lambda_pixel*self.d_losses.pixel_loss
 
         return self.d_losses
+
 
 class Vgg16FeatureExtractor(nn.Module):
     """Vgg16FeatureExtractor classes.
