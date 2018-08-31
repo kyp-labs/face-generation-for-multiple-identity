@@ -6,7 +6,6 @@ which matains old input data to replay discriminator with them.
 """
 import torch
 import random as ran
-import config
 
 
 class ReplayMemory():
@@ -21,15 +20,16 @@ class ReplayMemory():
 
     """
 
-    def __init__(self, use_cuda, enabled):
+    def __init__(self, config, use_cuda, enabled):
         """Init variables."""
+        self.config = config
         self.use_cuda = use_cuda
         self.enabled = enabled
         self.replay_memory = []
         self.cur_resol = 0
-        dict = config.replay.max_memory_size_dict
+        dict = self.config.replay.max_memory_size_dict
         self.max_memory_size = dict.get(self.cur_resol,
-                                        config.replay.max_memory_size)
+                                        self.config.replay.max_memory_size)
 
     def reset(self, cur_resol):
         """Reset replay memory for [cur_resol] resolution.
@@ -46,9 +46,9 @@ class ReplayMemory():
         self.cur_resol = cur_resol
         self.replay_memory.clear()
 
-        dict = config.replay.max_memory_size_dict
+        dict = self.config.replay.max_memory_size_dict
         self.max_memory_size = dict.get(self.cur_resol,
-                                        config.replay.max_memory_size)
+                                        self.config.replay.max_memory_size)
 
     def append(self, cur_resol, real, mask, obs, syn):
         """Append new data to replay memory.

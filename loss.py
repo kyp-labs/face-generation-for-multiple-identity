@@ -31,7 +31,6 @@ from util.util import Gan
 from util.util import GeneratorLoss
 from util.util import DiscriminatorLoss
 from util.util import Vgg16Layers
-import config
 
 
 class FaceGenLoss():
@@ -55,38 +54,39 @@ class FaceGenLoss():
 
     """
 
-    def __init__(self, use_cuda=False, gpu=-1):
+    def __init__(self, config, use_cuda=False, gpu=-1):
         """Class initializer.
 
         Steps:
-            1. Read loss params from config.py
+            1. Read loss params from self.config.py
             2. Create loss functions
             3. Create VGG16 model and feature extractor
 
         """
+        self.config = config
         self.pytorch_loss_use = True
 
         self.use_cuda = use_cuda
         self.gpu = gpu
 
-        self.alpha_adver_loss_syn = config.loss.alpha_adver_loss_syn
-        self.alpha_recon = config.loss.alpha_recon
+        self.alpha_adver_loss_syn = self.config.loss.alpha_adver_loss_syn
+        self.alpha_recon = self.config.loss.alpha_recon
 
-        self.lambda_GP = config.loss.lambda_GP
-        self.lambda_recon = config.loss.lambda_recon
-        self.lambda_feat = config.loss.lambda_feat
-        self.lambda_bdy = config.loss.lambda_bdy
-        self.lambda_cycle = config.loss.lambda_cycle
-        self.lambda_pixel = config.loss.lambda_pixel
+        self.lambda_GP = self.config.loss.lambda_GP
+        self.lambda_recon = self.config.loss.lambda_recon
+        self.lambda_feat = self.config.loss.lambda_feat
+        self.lambda_bdy = self.config.loss.lambda_bdy
+        self.lambda_cycle = self.config.loss.lambda_cycle
+        self.lambda_pixel = self.config.loss.lambda_pixel
 
         self.g_losses = GeneratorLoss()
         self.d_losses = DiscriminatorLoss()
 
-        self.gan = config.loss.gan
+        self.gan = self.config.loss.gan
         self.create_loss_functions(self.gan)
 
         # for computing feature loss
-        if config.loss.use_feat_loss:
+        if self.config.loss.use_feat_loss:
             # Vgg16 ImageNet Pretrained Model
             self.vgg16 = Vgg16FeatureExtractor()
 
@@ -95,7 +95,7 @@ class FaceGenLoss():
     def register_on_gpu(self):
         """Set vgg16 to cuda according to gpu availability."""
         if self.use_cuda:
-            if config.loss.use_feat_loss:
+            if self.config.loss.use_feat_loss:
                 self.vgg16.cuda()
 
     def create_loss_functions(self, gan):
@@ -185,7 +185,7 @@ class FaceGenLoss():
             syn : synthesized images
 
         """
-        if config.loss.use_feat_loss is False:
+        if self.config.loss.use_feat_loss is False:
             return 0
 
         # get activation of relu2_2
@@ -247,7 +247,7 @@ class FaceGenLoss():
         if H < 16:
             return 0
 
-        mean_filter = MeanFilter(mask.shape, config.loss.mean_filter_size)
+        mean_filter = MeanFilter(mask.shape, self.config.loss.mean_filter_size)
         if self.use_cuda:
             mean_filter.cuda()
 

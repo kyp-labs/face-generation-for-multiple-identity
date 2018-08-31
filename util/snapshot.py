@@ -12,7 +12,6 @@ import torch
 import threading
 import matplotlib.pyplot as plt
 
-import config
 import util.util as util
 from util.logger import Logger
 from util.util import Phase
@@ -44,8 +43,9 @@ class Snapshot(object):
 
     """
 
-    def __init__(self, use_coda):
+    def __init__(self, config, use_coda):
         """Class initializer."""
+        self.config = config
         self.use_cuda = use_coda
         self.current_time = time.strftime('%Y-%m-%d %H%M%S')
         self.is_restored = False
@@ -60,10 +60,11 @@ class Snapshot(object):
             optim_D: optimizer of discriminator
 
         """
-        restore_dir = config.checkpoint.restore_dir
-        which_file = config.checkpoint.which_file  # 128x128-transition-105000
+        restore_dir = self.config.checkpoint.restore_dir
+        # 128x128-transition-105000
+        which_file = self.config.checkpoint.which_file
 
-        if config.checkpoint.restore is False \
+        if self.config.checkpoint.restore is False \
            or restore_dir == "" or which_file == "":
             self.is_restored = False
             self.new_directory()
@@ -119,7 +120,7 @@ class Snapshot(object):
 
     def new_directory(self):
         """New_directory."""
-        self.exp_dir = config.snapshot.exp_dir
+        self.exp_dir = self.config.snapshot.exp_dir
         self.sample_dir = \
             os.path.join(self.exp_dir, self.current_time, 'samples')
         self.ckpt_dir = os.path.join(self.exp_dir, self.current_time, 'ckpts')
@@ -129,7 +130,7 @@ class Snapshot(object):
 
     def prepare_logging(self):
         """Prepare_logging."""
-        root_log_dir = config.logging.log_dir
+        root_log_dir = self.config.logging.log_dir
         if os.path.exists(root_log_dir) is False:
             os.makedirs(root_log_dir)
 
@@ -186,7 +187,7 @@ class Snapshot(object):
         # ===report ===
         self.line_summary(global_it, it, total_it, phase, cur_resol, cur_level)
 
-        if config.snapshot.enable_threading:
+        if self.config.snapshot.enable_threading:
             t = threading.Thread(target=self._snapshot,
                                  args=(global_it,
                                        it,
@@ -241,12 +242,12 @@ class Snapshot(object):
             optim_D: optimizer of discriminator
 
         """
-        sample_freq = \
-            config.snapshot.sample_freq_dict.get(cur_resol,
-                                                 config.snapshot.sample_freq)
-        save_freq = \
-            config.checkpoint.save_freq_dict.get(cur_resol,
-                                                 config.checkpoint.save_freq)
+        sample_freq_dict = self.config.snapshot.sample_freq_dict
+        sample_freq = sample_freq_dict.get(cur_resol,
+                                           self.config.snapshot.sample_freq)
+        save_freq_dict = self.config.snapshot.save_freq_dict
+        save_freq = save_freq_dict.get(cur_resol,
+                                       self.config.checkpoint.save_freq)
         # ===generate sample images===
         samples = []
         if (it % sample_freq == 1) or it == total_it:
@@ -258,7 +259,7 @@ class Snapshot(object):
                                                phase)
             imsave(os.path.join(self.sample_dir, filename), samples)
 
-            if config.snapshot.draw_plot:
+            if self.config.snapshot.draw_plot:
                 filename = '%s-%dx%d-%s-%s-loss.png' % (str(global_it).
                                                         zfill(6),
                                                         cur_resol,
@@ -337,7 +338,7 @@ class Snapshot(object):
             minibatch_size: minibatch size
 
         """
-        n_row = config.snapshot.rows_map[minibatch_size]
+        n_row = self.config.snapshot.rows_map[minibatch_size]
         if n_row > minibatch_size:
             n_row = minibatch_size // 2
         n_col = int(np.ceil(minibatch_size / float(n_row)))
@@ -433,7 +434,7 @@ class Snapshot(object):
             show: flag to show plot on screen
 
         """
-        if config.snapshot.draw_plot is False:
+        if self.config.snapshot.draw_plot is False:
             return
 
         g_loss_hist = self.g_loss_hist.g_loss_hist
