@@ -41,7 +41,7 @@ class ScaleNRotate(object):
         sc = (self.scales[1] - self.scales[0]) * random.random() - \
              (self.scales[1] - self.scales[0]) / 2 + 1
 
-        for elem in ['image', 'mask']:
+        for elem in ['image', 'real_mask', 'obs_mask']:
             image = sample[elem]
 
             h, w = image.shape[:2]
@@ -77,7 +77,7 @@ class ToTensor(object):
             sample (dict): {str: array} formatted data for training.
 
         """
-        for elem in ['image', 'mask']:
+        for elem in ['image', 'real_mask', 'obs_mask']:
             tmp = sample[elem]
 
             if tmp.ndim == 2:
@@ -149,7 +149,8 @@ class TargetMask(object):
         target_id = random.randint(0, self.num_classes-1)
 
         resolution = image.shape[-2]
-        mask = np.zeros([resolution, resolution])
+        real_mask = np.ones([resolution, resolution]) * sample['id']
+        obs_mask = real_mask.copy()
 
         start_pos = resolution // 4
         end_pos = resolution * 3 // 4
@@ -157,9 +158,10 @@ class TargetMask(object):
         assert len(image.shape) == 3, \
             f'image dims should be 3, not {len(image.shape)}'
 
-        mask[start_pos: end_pos, start_pos: end_pos] = target_id
+        obs_mask[start_pos: end_pos, start_pos: end_pos] = target_id
 
-        sample['mask'] = mask
+        sample['real_mask'] = real_mask
+        sample['obs_mask'] = obs_mask
         sample['target_id'] = target_id
         return sample
 
