@@ -55,7 +55,8 @@ def test_end_to_end(args):
         target_id = sample['target_id']
 
         print(f"lev: {lev}, res: {res}, image: {image.shape}, \
-              mask: {real_mask.shape}, {obs_mask.shape}, target_id: {target_id}")
+              mask: {real_mask.shape}, {obs_mask.shape}, \
+              target_id: {target_id}")
         # Generator
         fake_image = G(image, obs_mask, cur_level=lev)
         assert list(fake_image.shape) == [batch_size, 3, res, res], \
