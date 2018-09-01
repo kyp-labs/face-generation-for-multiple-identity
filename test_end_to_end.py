@@ -50,13 +50,15 @@ def test_end_to_end(args):
         dataloader = DataLoader(dataset, batch_size, True)
         sample = iter(dataloader).next()  # noqa: B305
         image = sample['image']
-        mask = sample['mask']
+        real_mask = sample['real_mask']
+        obs_mask = sample['obs_mask']
         target_id = sample['target_id']
 
         print(f"lev: {lev}, res: {res}, image: {image.shape}, \
-              mask: {mask.shape}, target_id: {target_id}")
+              mask: {real_mask.shape}, {obs_mask.shape}, \
+              target_id: {target_id}")
         # Generator
-        fake_image = G(image, mask, cur_level=lev)
+        fake_image = G(image, obs_mask, cur_level=lev)
         assert list(fake_image.shape) == [batch_size, 3, res, res], \
             f'Generator: {res, lev} test failed'
 

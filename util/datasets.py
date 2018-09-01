@@ -110,7 +110,7 @@ class VGGFace2Dataset(Dataset):
                                 transform.ToTensor(),
                                 ]))
         """
-        full_path = os.path.normcase(data_dir + f'/{resolution}/*/*.jpg')
+        full_path = os.path.normcase(data_dir + f'/{resolution}/*/*.png')
         self.file_list = glob.glob(full_path)
         self.file_list
         self.landmark_info = pd.read_csv(landmark_info_path)
@@ -138,7 +138,7 @@ class VGGFace2Dataset(Dataset):
         id = self.identity_to_id[identity]
 
         landmark = self.landmark_info[self.landmark_info['NAME_ID'] ==
-                                      name_id].iloc[:, 1:].values.flatten()
+                                      name_id].iloc[:, 2:].values.flatten()
         image_arr = np.array(Image.open(image_path))
 
         sample = {'image': image_arr, 'landmark': landmark, 'id': id}
