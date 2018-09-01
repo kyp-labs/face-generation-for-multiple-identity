@@ -130,7 +130,8 @@ class VGGFace2Dataset(Dataset):
         """
         pattern = re.compile('n[0-9]{6}/[0-9]{4}_[0-9]{2}')
         image_path = self.file_list[idx]
-        image_path = image_path.replace("\\", "/")  # For Windows OS 
+        # For Windows OS 
+        image_path = image_path.replace("\\", "/") 
         name_id = re.search(pattern, image_path)[0]
 
         identity = name_id.split('/')[0]
