@@ -110,7 +110,9 @@ class VGGFace2Dataset(Dataset):
                                 transform.ToTensor(),
                                 ]))
         """
-        self.file_list = glob.glob(data_dir + f'/{resolution}/*/*.jpg')
+        full_path = os.path.normcase(data_dir + f'/{resolution}/*/*.jpg')
+        self.file_list = glob.glob(full_path)
+        self.file_list
         self.landmark_info = pd.read_csv(landmark_info_path)
         self.identity_info = pd.read_csv(identity_info_path)
         self.id_to_identity = dict(self.identity_info['Class_ID'])
@@ -128,6 +130,8 @@ class VGGFace2Dataset(Dataset):
         """
         pattern = re.compile('n[0-9]{6}/[0-9]{4}_[0-9]{2}')
         image_path = self.file_list[idx]
+        # For Windows OS
+        image_path = image_path.replace("\\", "/")
         name_id = re.search(pattern, image_path)[0]
 
         identity = name_id.split('/')[0]
