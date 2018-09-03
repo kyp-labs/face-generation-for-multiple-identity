@@ -221,6 +221,9 @@ class FaceGen():
 
             # load traninig set
             self.training_set = self.load_train_set(cur_resol, batch_size)
+            if len(self.training_set) == 0:
+                print("DataLoding is failed")
+                return
             if self.config.replay.enabled:
                 self.replay_memory.reset(cur_resol)
 
@@ -257,9 +260,9 @@ class FaceGen():
                         cur_level = float(R - min_resol + 1)
 
                     self.real = sample_batched['image']
-                    self.real_mask = sample_batched['mask']
+                    self.real_mask = sample_batched['real_mask']
                     self.obs = sample_batched['image']
-                    self.obs_mask = sample_batched['mask']
+                    self.obs_mask = sample_batched['obs_mask']
                     self.target_id = sample_batched['target_id']
 
                     cur_nimg = self.train_step(batch_size,

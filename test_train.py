@@ -18,8 +18,23 @@ class MyConfig(Config):
             'test_loose_landmark.csv'
         self.dataset.identity_path = \
             './dataset/VGGFACE2/test_identity_info.csv'
-        self.dataset.num_classes = 3
+        self.dataset.num_classes = 4
         self.dataset.num_channels = 3
+
+        self.train.net = config.EasyDict(min_resolution=256,
+                                         max_resolution=256,
+                                         latent_size=256,
+                                         fmap_base=1024,
+                                         num_layers=1)
+
+        self.sched.batch_base = 1  # Maximum batch size
+        self.sched.batch_dict = {4: 1,
+                                 8: 1,
+                                 16: 1,
+                                 32: 2,
+                                 64: 1,
+                                 128: 1,
+                                 256: 1}  # Resolution-specific overrides
 
 
 if __name__ == "__main__":
@@ -33,7 +48,7 @@ if __name__ == "__main__":
     elif env == 'prod':
         cfg = config.ProductionConfig()
     else:
-        cfg = config.MyConfig()
+        cfg = MyConfig()
 
     print('Running FaceGen()...')
     np.random.seed(cfg.common.random_seed)
