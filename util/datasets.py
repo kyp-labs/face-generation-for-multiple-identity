@@ -110,9 +110,11 @@ class VGGFace2Dataset(Dataset):
                                 transform.ToTensor(),
                                 ]))
         """
-        full_path = os.path.normcase(data_dir + f'/{resolution}/*/*.png')
-        self.file_list = glob.glob(full_path)
-        self.file_list
+        self.file_list = []
+        for ext in ('*.gif', '*.png', '*.jpg'):
+            full_path = os.path.normcase(data_dir + f'/{resolution}/*/' + ext)
+            self.file_list.extend(glob.glob(full_path))
+
         self.landmark_info = pd.read_csv(landmark_info_path)
         self.identity_info = pd.read_csv(identity_info_path)
         self.id_to_identity = dict(self.identity_info['Class_ID'])

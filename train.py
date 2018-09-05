@@ -27,11 +27,10 @@ from util.util import Phase
 from util.util import Gan
 from util.replay import ReplayMemory
 from util.snapshot import Snapshot
-from util.util import GeneratorLossHistory
-from util.util import DiscriminatorLossHistory
 
 import config
 from loss import FaceGenLoss
+import datetime
 
 
 class FaceGen():
@@ -51,8 +50,6 @@ class FaceGen():
         optim_G : optimizer for generator
         optim_D : optimizer for discriminator
         loss : losses of generator and discriminator
-        g_loss_hist : loss history for generator (for plotting)
-        d_loss_hist : loss history for discriminator (for plotting)
         replay_memory : replay memory
         global_it : global # of iterations through training
         global_cur_nimg : global # of current images through training
@@ -133,9 +130,6 @@ class FaceGen():
                                 self.use_cuda,
                                 self.config.env.num_gpus)
 
-        self.g_loss_hist = GeneratorLossHistory()
-        self.d_loss_hist = DiscriminatorLossHistory()
-
         # Replay Memory
         self.replay_memory = ReplayMemory(self.config,
                                           self.use_cuda,
@@ -174,6 +168,8 @@ class FaceGen():
 
         assert from_resol <= max_resol
 
+        prev_time = datetime.datetime.now()
+
         # layer iteration
         for R in range(from_resol, max_resol+1):
 
@@ -190,6 +186,9 @@ class FaceGen():
             transition_iter = self.transition_size//batch_size
             assert (train_iter != 0) and (transition_iter != 0)
 
+            cur_time = datetime.datetime.now()
+            print("Layer Training Time : ", cur_time - prev_time)
+            prev_time = cur_time
             print("********** New Layer [%d x %d] : batch_size %d **********"
                   % (cur_resol, cur_resol, batch_size))
 
@@ -371,9 +370,7 @@ class FaceGen():
                                self.optim_G,
                                self.optim_D,
                                self.loss.g_losses,
-                               self.loss.d_losses,
-                               self.g_loss_hist,
-                               self.d_loss_hist)
+                               self.loss.d_losses)
         cur_nimg += batch_size
 
         return cur_nimg
@@ -426,9 +423,6 @@ class FaceGen():
         self.loss.g_losses.g_loss.backward()
         self.optim_G.step()
 
-        if self.config.snapshot.draw_plot:
-            self.g_loss_hist.append(self.loss.g_losses)
-
     def backward_D(self, cur_level, retain_graph=True):
         """Backward discriminator.
 
@@ -451,9 +445,6 @@ class FaceGen():
 
         self.loss.d_losses.d_loss.backward(retain_graph=retain_graph)
         self.optim_D.step()
-
-        if self.config.snapshot.draw_plot:
-            self.d_loss_hist.append(self.loss.d_losses)
 
     def preprocess(self):
         """Set input type to cuda or cpu according to gpu availability."""
@@ -573,6 +564,7 @@ class FaceGen():
 
 
 if __name__ == "__main__":
+    begin_time = datetime.datetime.now()
 
     env = sys.argv[1] if len(sys.argv) > 2 else 'dev'
 
@@ -590,4 +582,9 @@ if __name__ == "__main__":
     facegen = FaceGen(cfg)
     facegen.train()
 
+    end_time = datetime.datetime.now()
+
+    print()
+    print("Blackjack World", end_time)
+    print("Running Time", end_time - begin_time)
     print('Exiting...')

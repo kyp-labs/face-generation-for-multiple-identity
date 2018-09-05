@@ -790,7 +790,6 @@ class Discriminator(nn.Module):
 
         # classifier
         cls = self.dense(h.squeeze(-1).squeeze(-1))
-
         # pixel classifier
         pix_cls = None
         if self.R - max_level <= self.num_layers:
