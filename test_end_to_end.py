@@ -27,10 +27,10 @@ args = parser.parse_args()
 def test_end_to_end(args):
     """Test end to end data handling process."""
     batch_size = 1
-    resolutions = [128, 256]
-    levels = [6, 7]
+    resolutions = [256, 256]
+    levels = [7, 7]
     num_classes = 5
-    num_layers = 2
+    num_layers = 1
     data_shape = [batch_size, 3, 256, 256]
 
     transform = transforms.Compose([Normalize(0.5, 0.5),

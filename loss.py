@@ -214,7 +214,7 @@ class FaceGenLoss():
 
         # domain area of input image
         mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
-        mask *= obs_mask
+        # mask *= obs_mask
         mask = mask.repeat((1, C, 1, 1))
 
         # L1 norm
@@ -241,11 +241,11 @@ class FaceGenLoss():
 
         # domain area of input image
         mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
-        mask *= obs_mask
+        # mask *= obs_mask
         mask = mask.repeat((1, C, 1, 1))
 
-        if H < 16:
-            return 0
+        # if H < 16:
+        #    return 0
 
         mean_filter = MeanFilter(mask.shape, self.config.loss.mean_filter_size)
         if self.use_cuda:

@@ -183,7 +183,6 @@ class Config():
                                   2: 1,
                                   1: 1}  # rows per batch size
         self.snapshot.enable_threading = False
-        self.snapshot.draw_plot = False
 
         # Model Save & Restore
         self.checkpoint = EasyDict()
@@ -191,7 +190,7 @@ class Config():
         self.checkpoint.restore_dir = ''  # restore from which exp dir
         self.checkpoint.which_file = ''  # restore from which file
 
-        self.checkpoint.save_freq = 2  # save model frequency
+        self.checkpoint.save_freq = 128  # save model frequency
         self.checkpoint.save_freq_dict = self.snapshot.sample_freq_dict
 
         # Loggingalpha_adver

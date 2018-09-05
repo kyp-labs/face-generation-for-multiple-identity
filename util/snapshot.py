@@ -10,7 +10,6 @@ import numpy as np
 from scipy.misc import imsave
 import torch
 import threading
-import matplotlib.pyplot as plt
 
 import util.util as util
 from util.logger import Logger
@@ -36,8 +35,6 @@ class Snapshot(object):
         logger : logger
         g_losses : losses of generator
         d_losses : losses of discriminator
-        g_loss_hist : loss history for generator (for plotting)
-        d_loss_hist : loss history for discriminator (for plotting)
         real : real images
         syn : synthesized images
 
@@ -152,9 +149,7 @@ class Snapshot(object):
                  optim_G,
                  optim_D,
                  g_losses,
-                 d_losses,
-                 g_loss_hist,
-                 d_loss_hist):
+                 d_losses):
         """Snapshot.
 
         Args:
@@ -173,59 +168,38 @@ class Snapshot(object):
             optim_D: optimizer of discriminator
             g_losses : losses of generator
             d_losses : losses of discriminator
-            g_loss_hist : loss history for generator (for plotting)
-            d_loss_hist : loss history for discriminator (for plotting)
 
         """
         self.g_losses = g_losses
         self.d_losses = d_losses
-        self.g_loss_hist = g_loss_hist
-        self.d_loss_hist = d_loss_hist
         self.real = real
         self.syn = syn
 
         # ===report ===
         self.line_summary(global_it, it, total_it, phase, cur_resol, cur_level)
+        self.log_loss_to_tensorboard(global_it)
+
+        args = (global_it, it, total_it, phase, cur_resol, cur_level,
+                minibatch_size, G, D, optim_G, optim_D)
 
         if self.config.snapshot.enable_threading:
-            t = threading.Thread(target=self._snapshot,
-                                 args=(global_it,
-                                       it,
-                                       total_it,
-                                       phase,
-                                       cur_resol,
-                                       cur_level,
-                                       minibatch_size,
-                                       G,
-                                       D,
-                                       optim_G,
-                                       optim_D))
+            t = threading.Thread(target=self.periodic_snapshot, args=args)
             t.start()
         else:
-            self._snapshot(global_it,
-                           it,
-                           total_it,
-                           phase,
-                           cur_resol,
-                           cur_level,
-                           minibatch_size,
-                           G,
-                           D,
-                           optim_G,
-                           optim_D)
+            self.periodic_snapshot(*args)
 
-    def _snapshot(self,
-                  global_it,
-                  it,
-                  total_it,
-                  phase,
-                  cur_resol,
-                  cur_level,
-                  minibatch_size,
-                  G,
-                  D,
-                  optim_G,
-                  optim_D):
+    def periodic_snapshot(self,
+                          global_it,
+                          it,
+                          total_it,
+                          phase,
+                          cur_resol,
+                          cur_level,
+                          minibatch_size,
+                          G,
+                          D,
+                          optim_G,
+                          optim_D):
         """Snapshot.
 
         Args:
@@ -245,7 +219,7 @@ class Snapshot(object):
         sample_freq_dict = self.config.snapshot.sample_freq_dict
         sample_freq = sample_freq_dict.get(cur_resol,
                                            self.config.snapshot.sample_freq)
-        save_freq_dict = self.config.snapshot.save_freq_dict
+        save_freq_dict = self.config.checkpoint.save_freq_dict
         save_freq = save_freq_dict.get(cur_resol,
                                        self.config.checkpoint.save_freq)
         # ===generate sample images===
@@ -259,20 +233,9 @@ class Snapshot(object):
                                                phase)
             imsave(os.path.join(self.sample_dir, filename), samples)
 
-            if self.config.snapshot.draw_plot:
-                filename = '%s-%dx%d-%s-%s-loss.png' % (str(global_it).
-                                                        zfill(6),
-                                                        cur_resol,
-                                                        cur_resol,
-                                                        str(it).zfill(6),
-                                                        phase)
-                self.plot_loss(global_it,
-                               os.path.join(self.sample_dir, filename),
-                               False)
-
         # ===tensorboard visualization===
-        # if (it % sample_freq == 0) or it == total_it:
-        #    self.tensorboard(global_it, it, phase, cur_resol, G, D)
+        if (it % sample_freq == 1) or it == total_it:
+            self.log_weight_to_tensorboard(global_it, G, D)
 
         # ===save model===
         if (it % save_freq == 1) or it == total_it:
@@ -371,87 +334,76 @@ class Snapshot(object):
 
         return samples
 
-    def tensorboard(self, global_it, it, phase, cur_resol, G, D):
+    def log_loss_to_tensorboard(self, global_it):
         """Tensorboard.
 
         Args:
             global_it : global # of iterations through training
-            it: current # of iterations in the phases of the layer
-            phase: training, transition, replaying
-            cur_resol: image resolution of current layer
-            G: generator
-            D: discriminator
 
         """
         # (1) Log the scalar values
-        prefix = str(global_it)+'/' + str(cur_resol)+'/' + str(phase) + '/'
-        # prefix = str(cur_resol)+'/' + str(phase) + '/'
-
-        info = {prefix + 'G_loss': self.g_losses.g_loss,
-                prefix + 'G_adver_loss': self.g_losses.g_adver_loss,
-                prefix + 'recon_loss': self.g_losses.recon_loss,
-                prefix + 'feat_loss': self.g_losses.feat_loss,
-                prefix + 'bdy_loss': self.g_losses.bdy_loss,
-                prefix + 'D_loss': self.d_losses.d_loss,
-                prefix + 'D_adver_loss': self.d_losses.d_adver_loss,
-                prefix + 'D_adver_loss_syn': self.d_losses.d_adver_loss_syn,
-                prefix + 'D_adver_loss_real': self.d_losses.d_adver_loss_real,
-                prefix + 'gradient_penalty': self.d_losses.gradient_penalty}
+        info = {'Generator/Loss':
+                self.g_losses.g_loss,
+                'Generator/Adversarial Loss':
+                self.g_losses.g_adver_loss,
+                'Generator/Reconstruction Loss':
+                self.g_losses.recon_loss,
+                'Generator/Feature Loss':
+                self.g_losses.feat_loss,
+                'Generator/Boundary Loss':
+                self.g_losses.bdy_loss,
+                'Generator/Pixelwise Classfication Loss':
+                self.g_losses.pixel_loss,
+                'Generator/Cycle Consistency Loss':
+                self.g_losses.cycle_loss,
+                'Discriminator/Loss':
+                self.d_losses.d_loss,
+                'Discriminator/Adversarial Loss':
+                self.d_losses.d_adver_loss,
+                'Discriminator/Adversarial Loss (R)':
+                self.d_losses.d_adver_loss_real,
+                'Discriminator/Adversarial Loss (S)':
+                self.d_losses.d_adver_loss_syn,
+                'Discriminator/Gradient Penalty':
+                self.d_losses.gradient_penalty,
+                'Discriminator/Pixelwise Classfication Loss':
+                self.d_losses.pixel_loss,
+                'Discriminator/Pixelwise Classfication Loss (R)':
+                self.d_losses.pixel_loss_real,
+                'Discriminator/Pixelwise Classfication Loss (S)':
+                self.d_losses.pixel_loss_syn}
 
         for tag, value in info.items():
             self.logger.scalar_summary(tag, value, global_it)
 
-        # (2) Log values and gradients of the parameters (histogram)
-        for tag, value in G.named_parameters():
-            tag = tag.replace('.', '/')
-            self.logger.histo_summary('G/' + prefix + tag,
-                                      util.tensor2numpy(self.use_cuda, value),
-                                      it)
-            if value.grad is not None:
-                self.logger.histo_summary('G/' + prefix + tag + '/grad',
-                                          util.tensor2numpy(self.use_cuda,
-                                                            value.grad),
-                                          it)
-
-        for tag, value in D.named_parameters():
-            tag = tag.replace('.', '/')
-            self.logger.histo_summary('D/' + prefix + tag,
-                                      util.tensor2numpy(self.use_cuda, value),
-                                      it)
-            if value.grad is not None:
-                self.logger.histo_summary('D/' + prefix + tag + '/grad',
-                                          util.tensor2numpy(self.use_cuda,
-                                                            value.grad),
-                                          it)
-
-    # Plot losses
-    def plot_loss(self, global_it, file_name, show=False):
-        """Plot loss.
+    def log_weight_to_tensorboard(self, global_it, G, D):
+        """Tensorboard.
 
         Args:
             global_it : global # of iterations through training
-            file_name: file name for saving a plot image
-            show: flag to show plot on screen
+            G: generator
+            D: discriminator
 
         """
-        if self.config.snapshot.draw_plot is False:
-            return
+        # (2) Log values and gradients of the parameters (histogram)
+        for tag, value in G.named_parameters():
+            tag = tag.replace('.', '/')
+            self.logger.histo_summary('Generator/' + tag,
+                                      util.tensor2numpy(self.use_cuda, value),
+                                      global_it)
+            if value.grad is not None:
+                self.logger.histo_summary('Generator/' + tag + '/grad',
+                                          util.tensor2numpy(self.use_cuda,
+                                                            value.grad),
+                                          global_it)
 
-        g_loss_hist = self.g_loss_hist.g_loss_hist
-        d_loss_hist = self.d_loss_hist.d_loss_hist
-
-        fig, ax = plt.subplots()
-        ax.set_xlim(0, len(g_loss_hist))
-        ax.set_ylim(0, max(np.max(g_loss_hist), np.max(d_loss_hist))*1.1)
-        plt.xlabel('Iteration {0}'.format(global_it + 1))
-        plt.ylabel('Loss values')
-        plt.plot(g_loss_hist, label='Generator')
-        plt.plot(d_loss_hist, label='Discriminator')
-        plt.legend()
-
-        plt.savefig(file_name)
-
-        if show:
-            plt.show()
-        else:
-            plt.close()
+        for tag, value in D.named_parameters():
+            tag = tag.replace('.', '/')
+            self.logger.histo_summary('Discriminator/' + tag,
+                                      util.tensor2numpy(self.use_cuda, value),
+                                      global_it)
+            if value.grad is not None:
+                self.logger.histo_summary('Discriminator/' + tag + '/grad',
+                                          util.tensor2numpy(self.use_cuda,
+                                                            value.grad),
+                                          global_it)
