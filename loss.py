@@ -212,8 +212,13 @@ class FaceGenLoss():
         """
         N, C, H, W = real.shape
 
+<<<<<<< HEAD
         # target area of domain mask
         mask = 1 - util.tofloat(self.use_cuda, real_mask == obs_mask)
+=======
+        # domain area of input image
+        mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
+>>>>>>> a9efead86d4d8f0a05ff5f23ddd79ab338d1d29d
         # mask *= obs_mask
         mask = mask.repeat((1, C, 1, 1))
 
@@ -239,8 +244,13 @@ class FaceGenLoss():
         # blurring mask boundary
         N, C, H, W = obs_mask.shape
 
+<<<<<<< HEAD
         # target area of domain mask
         mask = 1 - util.tofloat(self.use_cuda, real_mask == obs_mask)
+=======
+        # domain area of input image
+        mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
+>>>>>>> a9efead86d4d8f0a05ff5f23ddd79ab338d1d29d
         # mask *= obs_mask
         mask = mask.repeat((1, C, 1, 1))
 
