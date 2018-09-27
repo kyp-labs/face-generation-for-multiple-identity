@@ -212,8 +212,8 @@ class FaceGenLoss():
         """
         N, C, H, W = real.shape
 
-        # domain area of input image
-        mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
+        # target area of domain mask
+        mask = 1 - util.tofloat(self.use_cuda, real_mask == obs_mask)
         # mask *= obs_mask
         mask = mask.repeat((1, C, 1, 1))
 
@@ -239,8 +239,8 @@ class FaceGenLoss():
         # blurring mask boundary
         N, C, H, W = obs_mask.shape
 
-        # domain area of input image
-        mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
+        # target area of domain mask
+        mask = 1 - util.tofloat(self.use_cuda, real_mask == obs_mask)
         # mask *= obs_mask
         mask = mask.repeat((1, C, 1, 1))
 
@@ -334,11 +334,12 @@ class FaceGenLoss():
                                                         syn)
 
         # pixelwise classification koss
-        if pixel_cls_syn is None:
-            self.g_losses.pixel_loss = 0
-        else:
-            self.g_losses.pixel_loss = \
-                self.cross_entropy2d(pixel_cls_syn, obs_mask)
+        self.g_losses.pixel_loss = 0
+        # if pixel_cls_syn is None:
+        #    self.g_losses.pixel_loss = 0
+        # else:
+        #    self.g_losses.pixel_loss = \
+        #        self.cross_entropy2d(pixel_cls_syn, obs_mask)
 
         self.g_losses.g_loss = self.g_losses.g_adver_loss + \
             self.lambda_recon*self.g_losses.recon_loss + \
@@ -423,6 +424,10 @@ class FaceGenLoss():
                                            real,
                                            syn)
 
+        self.d_adver_loss = self.d_losses.d_adver_loss_real +\
+            self.d_losses.d_adver_loss_syn +\
+            self.d_losses.gradient_penalty
+
         # pixelwise classification loss
         if pixel_cls_real is None:
             self.d_losses.pixel_loss_real = 0
@@ -437,9 +442,7 @@ class FaceGenLoss():
             self.d_losses.pixel_loss = self.d_losses.pixel_loss_real + \
                 self.d_losses.pixel_loss_syn
 
-        self.d_losses.d_loss = self.d_losses.d_adver_loss_real + \
-            self.alpha_adver_loss_syn * self.d_losses.d_adver_loss_syn + \
-            self.d_losses.gradient_penalty + \
+        self.d_losses.d_loss = self.d_adver_loss +\
             self.lambda_pixel*self.d_losses.pixel_loss
 
         return self.d_losses

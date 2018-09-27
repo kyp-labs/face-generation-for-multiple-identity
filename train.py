@@ -585,6 +585,5 @@ if __name__ == "__main__":
     end_time = datetime.datetime.now()
 
     print()
-    print("Blackjack World", end_time)
+    print("Exiting...", end_time)
     print("Running Time", end_time - begin_time)
-    print('Exiting...')

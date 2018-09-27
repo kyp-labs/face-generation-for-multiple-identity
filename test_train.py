@@ -15,19 +15,19 @@ class MyConfig(Config):
         """Initialize all config variables."""
         super().__init__()
         self.dataset.func = 'util.datasets.VGGFace2Dataset'
-        self.dataset.data_dir = './dataset/VGGFACE2_mix/train'
-        self.dataset.landmark_path = './dataset/VGGFACE2_mix/bb_landmark/' +\
+        self.dataset.data_dir = './dataset/VGGFACE2/train'
+        self.dataset.landmark_path = './dataset/VGGFACE2/bb_landmark/' +\
             'test_loose_landmark.csv'
         self.dataset.identity_path = \
-            './dataset/VGGFACE2_mix/test_identity_info.csv'
+            './dataset/VGGFACE2/test_identity_info.csv'
         self.dataset.num_classes = 4
         self.dataset.num_channels = 3
 
         # Tranining
 
-        self.train.total_size = 5000
-        self.train.train_size = 2500
-        self.train.transition_size = 2500
+        self.train.total_size = 10
+        self.train.train_size = 5
+        self.train.transition_size = 5
 
         self.train.net = EasyDict(min_resolution=4,
                                   max_resolution=256,
@@ -47,16 +47,19 @@ class MyConfig(Config):
 
 if __name__ == "__main__":
     begin_time = dt.datetime.now()
-
-    env = sys.argv[1] if len(sys.argv) > 2 else 'dev'
+    env = sys.argv[1] if len(sys.argv) > 2 else 'myconfig'
 
     if env == 'dev':
+        print('With development config,')
         cfg = config.DevelopmentConfig()
     elif env == 'test':
+        print('With test config,')
         cfg = config.TestCconfig()
     elif env == 'prod':
+        print('With production config,')
         cfg = config.ProductionConfig()
     else:
+        print('With my config,')
         cfg = MyConfig()
 
     print('Running FaceGen()...')
@@ -67,6 +70,5 @@ if __name__ == "__main__":
     end_time = dt.datetime.now()
 
     print()
-    print("Blackjack World", end_time)
+    print("Exiting...", end_time)
     print("Running Time", end_time - begin_time)
-    print('Exiting...')
