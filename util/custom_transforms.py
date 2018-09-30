@@ -128,7 +128,7 @@ class Normalize(object):
                 format(self.mean, self.std)
 
 
-class TargetMask(object):
+class PolygonMask(object):
     """Add Square mask to the sample."""
 
     def __init__(self, num_classes=10):
@@ -146,24 +146,31 @@ class TargetMask(object):
 
         """
         image = sample['image']
-        target_id = random.randint(0, self.num_classes-1)
+        landmark = sample['landmark']
+        real_id = sample['id']
+        fake_id = random.randint(1, self.num_classes-1)
 
         resolution = image.shape[-2]
-        real_mask = np.ones([resolution, resolution]) * sample['id']
+        landmark_adjust_ratio = 256 // resolution
+        real_mask = np.zeros([resolution, resolution],
+                             dtype=np.uint8)
         obs_mask = real_mask.copy()
 
-        start_pos = resolution // 4
-        end_pos = resolution * 3 // 4
+        polygon_coords = np.take(landmark, [0, 1, 2, 3, 8, 9, 6, 7])
+        polygon_coords = polygon_coords.astype(np.int32).reshape(1, -1, 2)
+        polygon_coords = polygon_coords // landmark_adjust_ratio
+        print(polygon_coords)
+
+        cv2.fillPoly(real_mask, polygon_coords, real_id)
+        cv2.fillPoly(obs_mask, polygon_coords, fake_id)
 
         assert len(image.shape) == 3, \
             f'image dims should be 3, not {len(image.shape)}'
 
-        obs_mask[start_pos: end_pos, start_pos: end_pos] = target_id
-
         sample['real_mask'] = real_mask
         sample['obs_mask'] = obs_mask
-        sample['target_id'] = target_id
+        sample['fake_id'] = fake_id
         return sample
 
     def __str__(self):  # noqa: D105
-        return f'TargetMask:(num_classes={str(self.num_classes)})'
+        return f'PolygonMask:(num_classes={str(self.num_classes)})'

@@ -111,13 +111,26 @@ class VGGFace2Dataset(Dataset):
                                 ]))
         """
         self.file_list = []
+        dir_list = os.listdir(os.path.join(data_dir, str(resolution)))
+        num_ids = len(dir_list)
+
         for ext in ('*.gif', '*.png', '*.jpg'):
             full_path = os.path.normcase(data_dir + f'/{resolution}/*/' + ext)
             self.file_list.extend(glob.glob(full_path))
 
-        self.landmark_info = pd.read_csv(landmark_info_path)
-        self.identity_info = pd.read_csv(identity_info_path)
-        self.id_to_identity = dict(self.identity_info['Class_ID'])
+        landmark_info = pd.read_csv(landmark_info_path)
+        landmark_info = landmark_info[landmark_info['NAME_ID']
+                                      .str.contains('|'.join(dir_list))]
+        identity_info = pd.read_csv(identity_info_path)
+        identity_info = identity_info[identity_info['Class_ID']
+                                      .str.contains('|'.join(dir_list))]
+
+        self.landmark_info = landmark_info
+        self.identity_info = identity_info
+
+        cls_ids = self.identity_info['Class_ID']
+        self.id_to_identity = {i: j for i, j in zip(range(1, len(cls_ids)+1),
+                                                    cls_ids)}
         self.identity_to_id = {j: i for i, j in self.id_to_identity.items()}
         self.transform = transform
 
@@ -140,7 +153,7 @@ class VGGFace2Dataset(Dataset):
         id = self.identity_to_id[identity]
 
         landmark = self.landmark_info[self.landmark_info['NAME_ID'] ==
-                                      name_id].iloc[:, 2:].values.flatten()
+                                      name_id].iloc[:, 1:].values.flatten()
         image_arr = np.array(Image.open(image_path))
 
         sample = {'image': image_arr, 'landmark': landmark, 'id': id}
