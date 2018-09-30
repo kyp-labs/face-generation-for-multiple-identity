@@ -112,7 +112,6 @@ class VGGFace2Dataset(Dataset):
         """
         self.file_list = []
         dir_list = os.listdir(os.path.join(data_dir, str(resolution)))
-        num_ids = len(dir_list)
 
         for ext in ('*.gif', '*.png', '*.jpg'):
             full_path = os.path.normcase(data_dir + f'/{resolution}/*/' + ext)
