@@ -147,8 +147,8 @@ class PolygonMask(object):
         """
         image = sample['image']
         landmark = sample['landmark']
-        real_id = sample['id']
-        fake_id = random.randint(1, self.num_classes-1)
+        gender = sample['gender']
+        fake_gender = random.randint(1, 2)
 
         resolution = image.shape[-2]
         landmark_adjust_ratio = 256 // resolution
@@ -159,17 +159,16 @@ class PolygonMask(object):
         polygon_coords = np.take(landmark, [0, 1, 2, 3, 8, 9, 6, 7])
         polygon_coords = polygon_coords.astype(np.int32).reshape(1, -1, 2)
         polygon_coords = polygon_coords // landmark_adjust_ratio
-        print(polygon_coords)
 
-        cv2.fillPoly(real_mask, polygon_coords, real_id)
-        cv2.fillPoly(obs_mask, polygon_coords, fake_id)
+        cv2.fillPoly(real_mask, polygon_coords, int(gender))
+        cv2.fillPoly(obs_mask, polygon_coords, fake_gender)
 
         assert len(image.shape) == 3, \
             f'image dims should be 3, not {len(image.shape)}'
 
         sample['real_mask'] = real_mask
         sample['obs_mask'] = obs_mask
-        sample['fake_id'] = fake_id
+        sample['fake_gender'] = fake_gender
         return sample
 
     def __str__(self):  # noqa: D105

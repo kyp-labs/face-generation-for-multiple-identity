@@ -1,4 +1,21 @@
-"""Image generator."""
+"""Image generator.
+
+Result directory structure:
+    ./datasets
+        - VGGFACE2
+            - train
+                - raw
+                    - n000810
+                    - n000001
+                    - ...
+                - 4
+                - 8
+                - ...
+                - all_filtered_results.csv
+                - all_loose_landmarks_256.csv
+
+python image_generator.py
+"""
 
 import os
 import argparse
@@ -38,7 +55,6 @@ class ResizedImageSaver(object):
                     os.makedirs(save_cls_dir)
 
                 self.save_images(file_list, save_cls_dir, imgs_resized)
-
 
     def resize_image(self, imgs, res_to):
         """Image resize to target resolution.
