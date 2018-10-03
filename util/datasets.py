@@ -1,4 +1,20 @@
-"""Custom dataset classes."""
+"""Custom dataset classes.
+
+Directory structure:
+    ./datasets
+        - VGGFACE2
+            - train
+                - raw
+                    - n000810
+                    - n000001
+                    - ...
+                - 4
+                - 8
+                - ...
+                - all_filtered_results.csv
+                - all_loose_landmarks_256.csv
+            - identity_info.csv
+"""
 
 import os
 import re
@@ -96,7 +112,8 @@ class VGGFace2Dataset(Dataset):
     """VGGFace2 Dataset according to the resolution."""
 
     def __init__(self, data_dir, resolution, landmark_info_path,
-                 identity_info_path, transform=None):
+                 identity_info_path, filtered_list, use_low_res=False,
+                 transform=None):
         """Constructor.
 
         Args:
@@ -104,21 +121,46 @@ class VGGFace2Dataset(Dataset):
             resolution (int): Specific resolution value to load.
             landmark_info (str): Path of the file having landmark information.
             identity_info (str): Path of the file having identity information.
+            filtered_list (str): Path of the file having filtered list
+                                 information.
+            use_low_res (bool): Use low resolution images or not.
             transform: Augmentation options, Default is None.
                        (e.g. torchvision.transforms.Compose([
                                 transform.CenterCrop(10),
                                 transform.ToTensor(),
                                 ]))
         """
-        self.file_list = []
+        file_list = []
+        dir_list = os.listdir(os.path.join(data_dir, str(resolution)))
+        filtered_list = pd.read_csv(filtered_list)
+        if use_low_res:
+            good_list = filtered_list[filtered_list['category'] !=
+                                      'Removed']['filename']
+        else:
+            good_list = filtered_list[filtered_list['category'] ==
+                                      'Good']['filename']
+
         for ext in ('*.gif', '*.png', '*.jpg'):
             full_path = os.path.normcase(data_dir + f'/{resolution}/*/' + ext)
-            self.file_list.extend(glob.glob(full_path))
+            file_list.extend(glob.glob(full_path))
 
-        self.landmark_info = pd.read_csv(landmark_info_path)
-        self.identity_info = pd.read_csv(identity_info_path)
-        self.id_to_identity = dict(self.identity_info['Class_ID'])
-        self.identity_to_id = {j: i for i, j in self.id_to_identity.items()}
+        self.file_list = [i for i in file_list if
+                          good_list.str.contains(os.path.basename(i)).any()]
+
+        landmark_info = pd.read_csv(landmark_info_path)
+        landmark_info = landmark_info[landmark_info['NAME_ID']
+                                      .str.contains('|'.join(dir_list))]
+        identity_info = pd.read_csv(identity_info_path)
+        identity_info = identity_info[identity_info['Class_ID']
+                                      .str.contains('|'.join(dir_list))]
+        identity_info[' Gender'] = identity_info[' Gender'].apply(
+            lambda x: 2 if x == ' f' else 1)
+
+        self.landmark_info = landmark_info
+        self.identity_info = identity_info
+
+        self.cls_to_gender = identity_info.set_index('Class_ID')[' Gender']\
+                                          .to_dict()
         self.transform = transform
 
     def __getitem__(self, idx):
@@ -136,14 +178,14 @@ class VGGFace2Dataset(Dataset):
         image_path = image_path.replace("\\", "/")
         name_id = re.search(pattern, image_path)[0]
 
-        identity = name_id.split('/')[0]
-        id = self.identity_to_id[identity]
+        cls_id = name_id.split('/')[0]
+        gender = int(self.cls_to_gender[cls_id])
 
         landmark = self.landmark_info[self.landmark_info['NAME_ID'] ==
                                       name_id].iloc[:, 2:].values.flatten()
         image_arr = np.array(Image.open(image_path))
 
-        sample = {'image': image_arr, 'landmark': landmark, 'id': id}
+        sample = {'image': image_arr, 'landmark': landmark, 'gender': gender}
         if self.transform is not None:
             sample = self.transform(sample)
         return sample
