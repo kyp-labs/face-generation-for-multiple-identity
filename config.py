@@ -129,7 +129,7 @@ class Config():
         self.loss.gan = Gan.sngan
         # weight of syn images' loss of D
         self.loss.alpha_adver_loss_syn = 1.0
-        # weight for mask area of reconstruction loss (0.7)
+        # weight for target area of reconstruction loss (0.7)
         self.loss.alpha_recon = 0.7
         # weight of gradient panelty (ref source = 10)
         self.loss.lambda_GP = 10.0
