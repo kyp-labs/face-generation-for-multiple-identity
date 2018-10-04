@@ -215,6 +215,7 @@ class DevelopmentConfig(Config):
         self.dataset.num_classes = 3
         self.dataset.num_channels = 3
 
+
 class TestConfig(Config):
     """Test Configuration Class."""
 
