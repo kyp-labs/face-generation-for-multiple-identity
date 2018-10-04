@@ -212,8 +212,8 @@ class FaceGenLoss():
         """
         N, C, H, W = real.shape
 
-        # domain area of input image
-        mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
+        # target area of domain mask
+        mask = 1 - util.tofloat(self.use_cuda, real_mask == obs_mask)
         # mask *= obs_mask
         mask = mask.repeat((1, C, 1, 1))
 
@@ -239,8 +239,8 @@ class FaceGenLoss():
         # blurring mask boundary
         N, C, H, W = obs_mask.shape
 
-        # domain area of input image
-        mask = util.tofloat(self.use_cuda, real_mask == obs_mask)
+        # target area of domain mask
+        mask = 1 - util.tofloat(self.use_cuda, real_mask == obs_mask)
         # mask *= obs_mask
         mask = mask.repeat((1, C, 1, 1))
 
@@ -334,11 +334,12 @@ class FaceGenLoss():
                                                         syn)
 
         # pixelwise classification koss
-        if pixel_cls_syn is None:
-            self.g_losses.pixel_loss = 0
-        else:
-            self.g_losses.pixel_loss = \
-                self.cross_entropy2d(pixel_cls_syn, obs_mask)
+        self.g_losses.pixel_loss = 0
+        # if pixel_cls_syn is None:
+        #    self.g_losses.pixel_loss = 0
+        # else:
+        #    self.g_losses.pixel_loss = \
+        #        self.cross_entropy2d(pixel_cls_syn, obs_mask)
 
         self.g_losses.g_loss = self.g_losses.g_adver_loss + \
             self.lambda_recon*self.g_losses.recon_loss + \
@@ -348,6 +349,51 @@ class FaceGenLoss():
             self.lambda_pixel*self.g_losses.pixel_loss
 
         return self.g_losses
+
+    def calc_pixel_loss(self,
+                        predict,
+                        target,
+                        source_domain,
+                        target_domain,
+                        weight=None,
+                        size_average=False):
+        """Calculate cross entropy for segmentation class.
+
+        Args:
+            predict (tensor) : [batch_size, num_channels, height, width]
+                                prediction of pixelwise classifier
+            target (tensor) : [batch_size, num_channels, height, width]
+                                target label {class id}
+            source_domain (tensor) : [batch_size, 1]
+                                    source domain id (real image domain id)
+            target_domain (tensor) : [batch_size, 1]
+                                    target domain id
+            weight (tensor) : [# of classes]
+                    weight of pixels
+
+        Return:
+            loss (scalar) : cross entropy loss
+
+        """
+        N, C, H, W = target.shape
+
+        # target area of domain mask
+        target_domain = target_domain.reshape(N, 1, 1, 1).repeat((1, C, H, W))
+        loss_mask = util.tofloat(self.use_cuda, target == target_domain)
+
+        masked_predict = util.tofloat(self.use_cuda, predict * loss_mask)
+        masked_target = util.tofloat(self.use_cuda, target * loss_mask)
+
+        # print(predict)
+        # print(target)
+
+        # print(loss_mask)
+        # print(masked_predict)
+
+        return self.cross_entropy2d(masked_predict,
+                                    masked_target,
+                                    weight,
+                                    size_average)
 
     def cross_entropy2d(self,
                         predict,
@@ -389,6 +435,8 @@ class FaceGenLoss():
                     real_mask,
                     obs,
                     obs_mask,
+                    source_domain,
+                    target_domain,
                     syn,
                     cls_real,
                     cls_syn,
@@ -404,6 +452,10 @@ class FaceGenLoss():
             real_mask (tensor) : domain masks of real images
             obs(tensor) : observed images
             obs_mask (tensor) : domain masks of observed images
+            source_domain (tensor) : [batch_size, 1]
+                                    source domain id (real image domain id)
+            target_domain (tensor) : [batch_size, 1]
+                                    target domain id
             syn (tensor) : synthesized images
             cls_real (tensor) : classes for real images
             cls_syn (tensor) : classes for synthesized images
@@ -423,6 +475,10 @@ class FaceGenLoss():
                                            real,
                                            syn)
 
+        self.d_adver_loss = self.d_losses.d_adver_loss_real +\
+            self.d_losses.d_adver_loss_syn +\
+            self.d_losses.gradient_penalty
+
         # pixelwise classification loss
         if pixel_cls_real is None:
             self.d_losses.pixel_loss_real = 0
@@ -430,16 +486,20 @@ class FaceGenLoss():
             self.d_losses.pixel_loss = 0
         else:
             self.d_losses.pixel_loss_real = \
-                self.cross_entropy2d(pixel_cls_real, real_mask)
+                self.calc_pixel_loss(pixel_cls_real,
+                                     real_mask,
+                                     source_domain,
+                                     target_domain)
             self.d_losses.pixel_loss_syn = \
-                self.cross_entropy2d(pixel_cls_syn, obs_mask)
+                self.calc_pixel_loss(pixel_cls_syn,
+                                     obs_mask,
+                                     source_domain,
+                                     target_domain)
 
             self.d_losses.pixel_loss = self.d_losses.pixel_loss_real + \
                 self.d_losses.pixel_loss_syn
 
-        self.d_losses.d_loss = self.d_losses.d_adver_loss_real + \
-            self.alpha_adver_loss_syn * self.d_losses.d_adver_loss_syn + \
-            self.d_losses.gradient_penalty + \
+        self.d_losses.d_loss = self.d_adver_loss +\
             self.lambda_pixel*self.d_losses.pixel_loss
 
         return self.d_losses

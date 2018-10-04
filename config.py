@@ -129,7 +129,7 @@ class Config():
         self.loss.gan = Gan.sngan
         # weight of syn images' loss of D
         self.loss.alpha_adver_loss_syn = 1.0
-        # weight for mask area of reconstruction loss (0.7)
+        # weight for target area of reconstruction loss (0.7)
         self.loss.alpha_recon = 0.7
         # weight of gradient panelty (ref source = 10)
         self.loss.lambda_GP = 10.0
@@ -206,13 +206,14 @@ class DevelopmentConfig(Config):
         super().__init__()
         self.dataset.func = 'util.datasets.VGGFace2Dataset'
         self.dataset.data_dir = './dataset/VGGFACE2/train'
-        self.dataset.landmark_path = './dataset/VGGFACE2/bb_landmark/' +\
-            'test_loose_landmark.csv'
+        self.dataset.landmark_path = './dataset/VGGFACE2/train/' +\
+            'all_loose_landmarks_256.csv'
         self.dataset.identity_path =\
-            './dataset/VGGFACE2/test_identity_info.csv'
+            './dataset/VGGFACE2/identity_info.csv'
+        self.dataset.filtering_path =\
+            './dataset/VGGFACE2/train/all_filtered_results.csv'
         self.dataset.num_classes = 3
         self.dataset.num_channels = 3
-
 
 class TestConfig(Config):
     """Test Configuration Class."""
@@ -222,10 +223,12 @@ class TestConfig(Config):
         super().__init__()
         self.dataset.func = 'util.datasets.VGGFace2Dataset'
         self.dataset.data_dir = './dataset/VGGFACE2/train'
-        self.dataset.landmark_path = './dataset/VGGFACE2/bb_landmark/' +\
-            'test_loose_landmark.csv'
+        self.dataset.landmark_path = './dataset/VGGFACE2/train/' +\
+            'all_loose_landmarks_256.csv'
         self.dataset.identity_path =\
-            './dataset/VGGFACE2/test_identity_info.csv'
+            './dataset/VGGFACE2/identity_info.csv'
+        self.dataset.filtering_path =\
+            './dataset/VGGFACE2/train/all_filtered_results.csv'
         self.dataset.num_classes = 3
         self.dataset.num_channels = 3
 
@@ -238,10 +241,12 @@ class ProductionConfig(Config):
         super().__init__()
         self.dataset.func = 'util.datasets.VGGFace2Dataset'
         self.dataset.data_dir = './dataset/VGGFACE2/train'
-        self.dataset.landmark_path = './dataset/VGGFACE2/bb_landmark/' +\
-            'test_loose_landmark.csv'
+        self.dataset.landmark_path = './dataset/VGGFACE2/train/' +\
+            'all_loose_landmarks_256.csv'
         self.dataset.identity_path =\
-            './dataset/VGGFACE2/test_identity_info.csv'
+            './dataset/VGGFACE2/identity_info.csv'
+        self.dataset.filtering_path =\
+            './dataset/VGGFACE2/train/all_filtered_results.csv'
         self.dataset.num_classes = 3
         self.dataset.num_channels = 3
 
