@@ -262,7 +262,8 @@ class FaceGen():
                     self.real_mask = sample_batched['real_mask']
                     self.obs = sample_batched['image']
                     self.obs_mask = sample_batched['obs_mask']
-                    self.target_id = sample_batched['target_id']
+                    self.source_domain = sample_batched['gender']
+                    self.target_domain = sample_batched['fake_gender']
 
                     cur_nimg = self.train_step(batch_size,
                                                cur_it,
@@ -437,6 +438,8 @@ class FaceGen():
                               self.real_mask,
                               self.obs,
                               self.obs_mask,
+                              self.source_domain,
+                              self.target_domain,
                               self.syn,
                               self.cls_real,
                               self.cls_syn,
@@ -452,6 +455,8 @@ class FaceGen():
         self.real_mask = util.tofloat(self.use_cuda, self.real_mask)
         self.obs = util.tofloat(self.use_cuda, self.obs)
         self.obs_mask = util.tofloat(self.use_cuda, self.obs_mask)
+        self.source_domain = util.tofloat(self.use_cuda, self.source_domain)
+        self.target_domain = util.tofloat(self.use_cuda, self.target_domain)
 
     def check_gpu(self):
         """Check gpu availability."""
@@ -477,17 +482,18 @@ class FaceGen():
         """
         num_classes = self.config.dataset.num_classes
         transform_options = transforms.Compose([dt.Normalize(0.5, 0.5),
-                                                dt.TargetMask(num_classes),
+                                                dt.PolygonMask(num_classes),
                                                 dt.ToTensor()])
+
         dataset_func = self.config.dataset.func
         ds = self.config.dataset
         datasets = util.call_func_by_name(data_dir=ds.data_dir,
                                           resolution=resol,
                                           landmark_info_path=ds.landmark_path,
                                           identity_info_path=ds.identity_path,
+                                          filtered_list=ds.filtering_path,
                                           transform=transform_options,
                                           func=dataset_func)
-
         # train_dataset & data loader
         return DataLoader(datasets, batch_size, True)
 
@@ -585,6 +591,5 @@ if __name__ == "__main__":
     end_time = datetime.datetime.now()
 
     print()
-    print("Blackjack World", end_time)
+    print("Exiting...", end_time)
     print("Running Time", end_time - begin_time)
-    print('Exiting...')
