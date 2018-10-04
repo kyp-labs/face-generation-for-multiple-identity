@@ -152,12 +152,129 @@ class PolygonMask(object):
 
         resolution = image.shape[-2]
         landmark_adjust_ratio = 256 // resolution
+        real_mask = np.full([resolution, resolution], gender,
+                            dtype=np.uint8)
+        obs_mask = real_mask.copy()
+
+        polygon_coords = np.take(landmark,
+                                 [0, 1, 2, 3, 2, 3, 8, 9, 6, 7, 0, 1])
+        nose_coords = np.take(landmark, [4, 5])
+
+        polygon_coords = polygon_coords.astype(np.int32).reshape(1, -1, 2)
+        nose_coords = nose_coords.astype(np.int32).reshape(1, -1, 2)
+
+        # eye mask width
+        EYE_LEFT = 0
+        EYE_RIGHT = 1
+        eye_width = abs(polygon_coords[:, EYE_LEFT, 0]
+                        - nose_coords[:, 0, 0]).astype(np.int32)
+        polygon_coords[:, EYE_LEFT, 0] -= eye_width
+        eye_width = abs(polygon_coords[:, EYE_RIGHT, 0]
+                        - nose_coords[:, 0, 0]).astype(np.int32)
+        polygon_coords[:, EYE_RIGHT, 0] += eye_width
+
+        # eye mask height
+        eye_height = abs(polygon_coords[:, EYE_LEFT, 1]
+                         - nose_coords[:, 0, 1]).astype(np.int32)//2
+        polygon_coords[:, EYE_LEFT, 1] -= eye_height
+        eye_height = abs(polygon_coords[:, EYE_RIGHT, 1]
+                         - nose_coords[:, 0, 1]).astype(np.int32)//2
+        polygon_coords[:, EYE_RIGHT, 1] -= eye_height
+
+        # cheek mask width
+        CHEEK_LEFT = 5
+        CHEEK_RIGHT = 2
+        polygon_coords[:, CHEEK_LEFT, 0] = polygon_coords[:, EYE_LEFT, 0]
+        polygon_coords[:, CHEEK_RIGHT, 0] = polygon_coords[:, EYE_RIGHT, 0]
+
+        # cheek mask height
+        polygon_coords[:, CHEEK_LEFT, 1] = nose_coords[:, 0, 1]
+        polygon_coords[:, CHEEK_RIGHT, 1] = nose_coords[:, 0, 1]
+
+        # lip mask width
+        LIP_LEFT = 4
+        LIP_RIGHT = 3
+
+        # lip mask height
+        lip_height = abs(polygon_coords[:, LIP_LEFT, 1]
+                         - nose_coords[:, 0, 1]).astype(np.int32)//2
+        polygon_coords[:, LIP_LEFT, 1] += lip_height
+        lip_height = abs(polygon_coords[:, LIP_RIGHT, 1]
+                         - nose_coords[:, 0, 1]).astype(np.int32)//2
+        polygon_coords[:, LIP_RIGHT, 1] += lip_height
+
+        polygon_coords = polygon_coords // landmark_adjust_ratio
+
+        cv2.fillPoly(real_mask, polygon_coords, int(gender))
+        cv2.fillPoly(obs_mask, polygon_coords, fake_gender)
+
+        assert len(image.shape) == 3, \
+            f'image dims should be 3, not {len(image.shape)}'
+
+        sample['real_mask'] = real_mask
+        sample['obs_mask'] = obs_mask
+        sample['fake_gender'] = fake_gender
+        return sample
+
+    def __call_echelon__(self, sample):
+        """caller.
+
+        Args:
+            sample (dict): {str: array} formatted data for training.
+
+        Returns:
+            sample (dict): {str: array} formatted data for training.
+
+        """
+        image = sample['image']
+        landmark = sample['landmark']
+        gender = sample['gender']
+        fake_gender = random.randint(1, 2)
+
+        resolution = image.shape[-2]
+        landmark_adjust_ratio = 256 // resolution
         real_mask = np.zeros([resolution, resolution],
                              dtype=np.uint8)
         obs_mask = real_mask.copy()
 
         polygon_coords = np.take(landmark, [0, 1, 2, 3, 8, 9, 6, 7])
+        nose_coords = np.take(landmark, [4, 5])
+
         polygon_coords = polygon_coords.astype(np.int32).reshape(1, -1, 2)
+        nose_coords = nose_coords.astype(np.int32).reshape(1, -1, 2)
+
+        # eye mask width
+        eye_width = abs(polygon_coords[:, 0, 0]
+                        - nose_coords[:, 0, 0]).astype(np.int32)
+        polygon_coords[:, 0, 0] -= eye_width
+        eye_width = abs(polygon_coords[:, 1, 0]
+                        - nose_coords[:, 0, 0]).astype(np.int32)
+        polygon_coords[:, 1, 0] += eye_width
+
+        # eye mask height
+        eye_height = abs(polygon_coords[:, 0, 1]
+                         - nose_coords[:, 0, 1]).astype(np.int32)*2//3
+        polygon_coords[:, 0, 1] -= eye_height
+        eye_height = abs(polygon_coords[:, 1, 1]
+                         - nose_coords[:, 0, 1]).astype(np.int32)*2//3
+        polygon_coords[:, 1, 1] -= eye_height
+
+        # lip mask width
+        lip_width = abs(polygon_coords[:, 3, 0]
+                        - nose_coords[:, 0, 0]).astype(np.int32)//3
+        polygon_coords[:, 3, 0] -= lip_width
+        lip_width = abs(polygon_coords[:, 2, 0]
+                        - nose_coords[:, 0, 0]).astype(np.int32)//3
+        polygon_coords[:, 2, 0] += lip_width
+
+        # lip mask height
+        lip_height = abs(polygon_coords[:, 3, 1]
+                         - nose_coords[:, 0, 1]).astype(np.int32)//2
+        polygon_coords[:, 3, 1] += lip_height
+        lip_height = abs(polygon_coords[:, 2, 1]
+                         - nose_coords[:, 0, 1]).astype(np.int32)//2
+        polygon_coords[:, 2, 1] += lip_height
+
         polygon_coords = polygon_coords // landmark_adjust_ratio
 
         cv2.fillPoly(real_mask, polygon_coords, int(gender))
